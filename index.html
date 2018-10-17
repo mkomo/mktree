@@ -1,0 +1,117 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+ "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+	<meta http-equiv="Content-type" content="text/html; charset=utf-8" />
+	<title>mktree</title>
+	<meta name="description" content="{% block description %}The intersection of Matt Komorowski and the Internet{% endblock %}"/>
+	<meta name="keywords" content="{% block keywords %}matt komorowski, matthew komorowski, mkomo{% endblock %}"/>
+	<meta name="viewport" content="width=device-width">
+	<link rel="icon" type="image/gif" href="/static/img/favico.gif" />
+</head>
+<body>
+  hello, mktree
+<script type="text/javascript">
+
+class MkTreeNode {
+  constructor(id, displayName=null, parent=null) {
+    this.state = {
+      id: id,
+      displayName: displayName,
+      parent: parent,
+      children: []
+    }
+  }
+
+  addChild(node) {
+    //TODO allow reordering
+    this.state.children.push(node)
+  }
+
+  setParent(node) {
+    this.state.parent = node;
+  }
+
+  getNodeCount(includeSelf = true) {
+    return this.getDescendents().length + (includeSelf ? 1 : 0);
+  }
+
+  getMaxDepth() {
+    if (this.state.children.length == 0) {
+      return 0;
+    } else {
+      return this.state.children.map(n => n.getMaxDepth()).reduce(( max, cur ) => Math.max( max, cur ), 0);
+    }
+  }
+
+  getRootDistance() {
+    return this.isRoot() ? 0 : 1 + this.getParent().getRootDistance();
+  }
+
+  getTreeNodes() {
+
+  }
+
+  getLevelNodes() {
+
+  }
+
+  getLevelIndex() {
+
+  }
+
+  getSiblingNodes() {
+
+  }
+
+  getSiblingIndex() {
+
+  }
+
+  getChildren() {
+
+  }
+
+  getDescendents() {
+
+  }
+
+  getParent() {
+
+  }
+
+  getRoot() {
+
+  }
+
+  isRoot() {
+    return this.state.parent === null;
+  }
+
+  getAncestors() {
+
+  }
+}
+
+class MkForest {
+  constructor() {
+    this.state = {
+      nodes: {}
+    }
+  }
+
+  addNode(node) {
+    this.state.nodes[node.id] = node;
+  }
+
+  getRoots() {
+    return nodes.filter(n=>n.isRoot());
+  }
+
+  getNodes() {
+    return this.state.nodes;
+  }
+}
+</script>
+</body>
+</html>
