@@ -49,31 +49,19 @@ class MkTreeNode {
     return this.isRoot() ? 0 : 1 + this.getParent().getRootDistance();
   }
 
-  getTreeNodes() {
-
-  }
-
   getLevelNodes() {
-
+    return this.getRoot().getDescendents(this.getRootDistance());
   }
 
-  getLevelIndex() {
-
-  }
-
-  getSiblingNodes() {
-
-  }
-
-  getSiblingIndex() {
-
+  getLevelIndex() { //TODO allow a root to be passed for calc of subtree
+    return this.getRoot().getDescendents(this.getRootDistance()).indexOf(this);
   }
 
   getChildren() {
     return this.state.children;
   }
 
-  getDescendents(level = null) {
+  getDescendents(level = null) { //TODO change name; allow boolean includeSelf flag
     let collector = [];
     this.dft((node) => {
       if (level === null || node.getRootDistance() == level) {
@@ -96,13 +84,19 @@ class MkTreeNode {
   }
 
   getAncestors() {
-
+    if (this.isRoot()) {
+      return [];
+    } else {
+      let a = this.getParent().getAncestors();
+      a.push(this.getParent());
+      return a;
+    }
   }
 
-  dft(func, args = {}, root = null) {
-    args = func.call(null, this, args);
+  dft(func, args = {}, ref) {
+    args = func.call(ref, this, args);
     this.getChildren().forEach(c => {
-      c.dft(func, args, root);
+      c.dft(func, args, ref);
     });
   }
 }
@@ -130,15 +124,10 @@ class MkForest {
     return Object.values(this.state.nodes).filter(n=>n.isRoot()).map(n=>n.getMaxDepth()).reduce(( max, cur ) => Math.max( max, cur ), 0);
   }
 
-  dft(func, args = {}, node = null, root = null) {
+  dft(func, args = {}, node = null) {
     if (node == null) {
       this.getRoots().forEach(n => {
-        this.dft(func, args, n, n);
-      });
-    } else {
-      args = func.call(null, node, args);
-      node.getChildren().forEach(c => {
-        this.dft(func, args, c, root);
+        n.dft(func, args, n);
       });
     }
   }
@@ -195,24 +184,57 @@ class MkTreeView {
 
   }
 
-  edges() {
-    return [[[0,0],[100,200]]];
-  }
-
-  nodes() {
-    return [[0,0],[100,200]];
+  position(node, dimensions, margin) {
+    let level = node.getRootDistance();
+    let index = node.getLevelIndex();
+    let levelCount = node.getLevelNodes().length;
+    let w = dimensions.width - 2*margin;
+    let h = dimensions.height - 2*margin;
+    let m = h/(w * 1.0);
+    let b = margin + h * (1 - 1/(level + 1))
+    //TODO get xmax at given m and b;
+    let xmax = margin + w * (1 - 1/(level + 1))
+    let x = margin + xmax * (1.0 * index + 0.5) / (levelCount);
+    return {
+      x: x,
+      y: margin - m * x + b
+    }
   }
 
   drawEdgesAndNodes() {
+    let edges = [];
+    let nodes = {};
+    let dimensions = this.getDimensions();
+    let margin = 12;
+
+    let levels = 0;
+
+    this.state.root.dft(function(node){
+      let p = this.position(node, dimensions, margin);
+      nodes[node.state.id] = {
+        node: node,
+        x: p.x,
+        y: p.y
+      };
+      if (!node.isRoot() && node.getParent().state.id in nodes) {
+        edges.push([nodes[node.getParent().state.id], nodes[node.state.id]]);
+      }
+    }, {}, this);
+
+    nodes = Object.values(nodes);
+
     var style = {
       line: 'edge'
     };
     var line = d3.line()
-        .x(d=>d[0])
-        .y(d=>d[1]);
+        .x(d=>{
+          return d.x;
+        })
+        .y(d=>d.y);
+
     //Edges
     var edge = this.container.selectAll("path." + style.line)
-      .data(this.edges());
+      .data(edges);
 
     edge.exit().remove();
 
@@ -237,7 +259,7 @@ class MkTreeView {
 
     //Nodes
     var circle = this.container.selectAll("circle")
-      .data(this.nodes().filter(node => true));
+      .data(nodes.filter(node => true));
 
     circle.exit().remove();
     circle.enter().append("circle")
@@ -245,10 +267,10 @@ class MkTreeView {
     .merge(circle)
       .style('fill', 'rgba(255,0,255,1.0)')
       .attr("cx", function(d) {
-        return d[0];
+        return d.x;
       })
       .attr("cy", function(d) {
-        return d[1];
+        return d.y;
       })
       .attr("r", function(d){
         return 10;
