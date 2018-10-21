@@ -45,16 +45,16 @@ class MkTreeNode {
     }
   }
 
-  getRootDistance() {
-    return this.isRoot() ? 0 : 1 + this.getParent().getRootDistance();
+  getRootDistance(root = this.getRoot()) {
+    return this ===root ? 0 : 1 + this.getParent().getRootDistance(root);
   }
 
-  getLevelNodes() {
-    return this.getRoot().getDescendents(this.getRootDistance());
+  getLevelNodes(root = this.getRoot()) {
+    return root.getDescendents(this.getRootDistance());
   }
 
-  getLevelIndex() { //TODO allow a root to be passed for calc of subtree
-    return this.getRoot().getDescendents(this.getRootDistance()).indexOf(this);
+  getLevelIndex(root = this.getRoot()) {
+    return this.getLevelNodes(root).indexOf(this);
   }
 
   getChildren() {
@@ -184,20 +184,22 @@ class MkTreeView {
 
   }
 
-  position(node, dimensions, margin) {
-    let level = node.getRootDistance();
-    let index = node.getLevelIndex();
-    let levelCount = node.getLevelNodes().length;
+  position(node, dimensions, margin, level, levelNodes) {
+    let index = levelNodes.indexOf(node);
+    let levelCount = levelNodes.length;
     let w = dimensions.width - 2*margin;
     let h = dimensions.height - 2*margin;
     let m = h/(w * 1.0);
-    let b = margin + h * (1 - 1/(level + 1))
+    let frac = (1 - 3/(level + 3));
+    let b = margin + h * frac;
     //TODO get xmax at given m and b;
-    let xmax = margin + w * (1 - 1/(level + 1))
+    let xmax = margin + w * frac;
     let x = margin + xmax * (1.0 * index + 0.5) / (levelCount);
     return {
+      node: node,
       x: x,
-      y: margin - m * x + b
+      y: margin - m * x + b,
+      r: 20 / (level + 1)
     }
   }
 
@@ -205,21 +207,21 @@ class MkTreeView {
     let edges = [];
     let nodes = {};
     let dimensions = this.getDimensions();
-    let margin = 12;
+    let margin = 24;
+    let depthCache = {};
 
-    let levels = 0;
-
+    console.log('start dft');
     this.state.root.dft(function(node){
-      let p = this.position(node, dimensions, margin);
-      nodes[node.state.id] = {
-        node: node,
-        x: p.x,
-        y: p.y
-      };
+      let level = node.getRootDistance();
+      if (!(level in depthCache)) {
+        depthCache[level] = node.getLevelNodes();
+      }
+      nodes[node.state.id] = this.position(node, dimensions, margin, level, depthCache[level]);
       if (!node.isRoot() && node.getParent().state.id in nodes) {
         edges.push([nodes[node.getParent().state.id], nodes[node.state.id]]);
       }
     }, {}, this);
+    console.log('end dft');
 
     nodes = Object.values(nodes);
 
@@ -273,7 +275,7 @@ class MkTreeView {
         return d.y;
       })
       .attr("r", function(d){
-        return 10;
+        return d.r;
       })
       .style('stroke','#444')
       .style('stroke-width','1.5px');
@@ -291,16 +293,17 @@ class MkTreeView {
           document.body.getBoundingClientRect().top) - 8
     }
   }
-
 }
 
 let f = new MkForest();
 let k = 0;
 let r = new MkTreeNode({ id: k });
 f.addNode(r);
-for (let i = 0; i < 4; i++) {
+let total = 1;
+for (let i = 0; i < 15; i++) {
   r.getDescendents(i).forEach(n=>{
-    for (let j = 0; j < 2; j++) {
+    let kids = i < 10 ? 2 : 1;//Math.floor(Math.random() * 3) + 1
+    for (let j = 0; j < kids; j++) {
       k++;
       n.addChild(new MkTreeNode({ id: k }));
     }
@@ -311,16 +314,22 @@ let v = new MkTreeView({
   forest: f,
   root: r
 })
+console.log('starting draw');
+v.draw();
+console.log('done with draw');
 
-func = function(node, args) {
+debug = function(node, args) {
   console.log(args['indent'] + node.state.id);
   return {indent: args['indent'] + '.'};
 }
 
-f.dft(func, {indent: ''});
-
-r.dft(func, {indent: '**'});
-v.draw();
+/*
+total nodes
+max level
+nodes per level
+*/
+//f.dft(debug, {indent: ''});
+//r.dft(debug, {indent: '**'});
 
 </script>
 </body>
