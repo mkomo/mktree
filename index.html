@@ -5,6 +5,32 @@
   <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
   <title>mktree</title>
   <meta name="viewport" content="width=device-width">
+  <style>
+  body {
+    margin: 0;
+    background-color: #555;
+    position: relative;
+    font-family: sans-serif;
+  }
+  svg {
+    display: block;
+    margin: 0;
+    background-color: #fff;
+  }
+  #info_box {
+    max-width: 50%;
+    max-height: 50%;
+    overflow: scroll;
+    position: absolute;
+    bottom: 14px;
+    right: 14px;
+    border: 1px solid #999;
+    padding: 10px;
+  }
+  #info_box table th {
+    text-align: right;
+  }
+  </style>
 </head>
 <body>
 <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/d3/5.7.0/d3.min.js"> </script>
@@ -16,6 +42,7 @@ class MkTreeNode {
       id: props.id,
       displayName: props.displayName || null,
       parent: props.parent || null,
+      data: props.data || null,
       children: []
     }
     this.toString = function() {
@@ -137,8 +164,19 @@ class MkTreeView {
   constructor(props) {
     this.state = {
       forest: props.forest,
-      root: props.root
+      root: props.root,
+      colorFunction: props.colorFunction || function(d) {
+        return '#999';
+      },
+      focusNode: props.focusNode || null
     }
+
+    this.svg = d3.select("body").append("svg")
+      .attr("id", 'graph_svg')
+    this.container = this.svg.append('g');
+
+    this.infoBox = d3.select("body").append("div")
+      .attr("id", 'info_box').append('table');
   }
 
   setState(newState) {
@@ -149,9 +187,6 @@ class MkTreeView {
   }
 
   draw() {
-    this.svg = d3.select("body").append("svg")
-      .attr("id", 'graph_svg')
-    this.container = this.svg.append('g');
 
     var d = this.getDimensions();
 
@@ -165,7 +200,7 @@ class MkTreeView {
     this.drawBreadCrumb();
     this.drawSectors();
     this.drawEdgesAndNodes();
-    this.drawFrame();
+    this.drawInfoBox();
   }
 
   drawKey() {
@@ -184,22 +219,24 @@ class MkTreeView {
 
   }
 
-  position(node, dimensions, margin, level, levelNodes) {
+  position(node, dimensions, margin, level, levelNodes, maxDepth) {
     let index = levelNodes.indexOf(node);
     let levelCount = levelNodes.length;
     let w = dimensions.width - 2*margin;
     let h = dimensions.height - 2*margin;
-    let m = h/(w * 1.0);
     let frac = (1 - 3/(level + 3));
-    let b = margin + h * frac;
-    //TODO get xmax at given m and b;
-    let xmax = margin + w * frac;
-    let x = margin + xmax * (1.0 * index + 0.5) / (levelCount);
+    let maxFrac = (1 - 3/(maxDepth + 3));
+
+    //linear
+    let m = h/(w * 1.0);
+    let b = margin + h * frac/maxFrac;
+    let xmax = margin + w * frac/maxFrac;
+    let x = margin/2 + xmax * (1.0 * index + 0.5) / (levelCount);
     return {
       node: node,
+      r: 20 / (level + 1),
       x: x,
-      y: margin - m * x + b,
-      r: 20 / (level + 1)
+      y: margin - m * x + b
     }
   }
 
@@ -209,14 +246,16 @@ class MkTreeView {
     let dimensions = this.getDimensions();
     let margin = 24;
     let depthCache = {};
+    let root = this.state.root;
+    let maxDepth = root.getMaxDepth();
 
     console.log('start dft');
-    this.state.root.dft(function(node){
+    root.dft(function(node){
       let level = node.getRootDistance();
       if (!(level in depthCache)) {
         depthCache[level] = node.getLevelNodes();
       }
-      nodes[node.state.id] = this.position(node, dimensions, margin, level, depthCache[level]);
+      nodes[node.state.id] = this.position(node, dimensions, margin, level, depthCache[level], maxDepth);
       if (!node.isRoot() && node.getParent().state.id in nodes) {
         edges.push([nodes[node.getParent().state.id], nodes[node.state.id]]);
       }
@@ -226,13 +265,11 @@ class MkTreeView {
     nodes = Object.values(nodes);
 
     var style = {
-      line: 'edge'
-    };
+        line: 'edge'
+      };
     var line = d3.line()
-        .x(d=>{
-          return d.x;
-        })
-        .y(d=>d.y);
+      .x(d=>d.x)
+      .y(d=>d.y);
 
     //Edges
     var edge = this.container.selectAll("path." + style.line)
@@ -242,16 +279,6 @@ class MkTreeView {
 
     edge.enter().append("path")
       .attr("class", style.line)
-      .on("click", function(d) {
-        d3.event.preventDefault();
-        d3.event.stopPropagation();
-        that.setState({
-          selectedEdges: d,
-          selectedNodes: that.mode() == MODE_SELECT_ADD ? that.state.selectedNodes : [],
-          dragged: null
-        });
-        that.redraw();
-      })
     .merge(edge)
       .style('stroke','#77777788')
       .style('stroke-width','1.5px')
@@ -262,12 +289,13 @@ class MkTreeView {
     //Nodes
     var circle = this.container.selectAll("circle")
       .data(nodes.filter(node => true));
+    let view = this;
 
     circle.exit().remove();
     circle.enter().append("circle")
       .style("opacity", 1)
     .merge(circle)
-      .style('fill', 'rgba(255,0,255,1.0)')
+      .style('fill', view.state.colorFunction)
       .attr("cx", function(d) {
         return d.x;
       })
@@ -277,12 +305,39 @@ class MkTreeView {
       .attr("r", function(d){
         return d.r;
       })
+      .on('click', function(d) {
+        view.state.focusNode = d.node;
+        view.drawInfoBox();
+      })
+      .on('dblclick', function(d) {
+        console.log('dblclick',d);
+        view.state.root = d.node;
+        view.draw();
+      })
       .style('stroke','#444')
       .style('stroke-width','1.5px');
   }
 
-  drawFrame() {
+  drawInfoBox() {
+    if (this.state.focusNode) {
+      let graphInfo = {
+        nodeCount: 0,
+        levelCount: 0,
+      }
 
+      let info = this.state.focusNode.state;
+      var entries = this.infoBox.selectAll("tr").data(Object.keys(info));
+      //console.log(data);
+
+      entries.exit().remove();
+
+      let rows = entries.enter().append("tr")
+        .attr("class", 'datum')
+      .merge(entries)
+        .html(d=>`<th>${d}</th><td>${info[d]}</td>`)
+    } else {
+      this.infoBox.html('');
+    }
   }
 
   getDimensions() {
@@ -290,7 +345,7 @@ class MkTreeView {
       width: window.innerWidth,
       height: window.innerHeight -
         (document.getElementById('graph_svg').getBoundingClientRect().top -
-          document.body.getBoundingClientRect().top) - 8
+          document.body.getBoundingClientRect().top)
     }
   }
 }
@@ -312,11 +367,16 @@ for (let i = 0; i < 15; i++) {
 
 let v = new MkTreeView({
   forest: f,
-  root: r
+  root: r,
+  focusNode: r,
+  colorFunction: function(d) {
+    let i = d.node.getRootDistance() * 50;
+    return `rgb(${i},${i},${i})`
+  }
 })
-console.log('starting draw');
+console.log('start draw');
 v.draw();
-console.log('done with draw');
+console.log('end draw');
 
 debug = function(node, args) {
   console.log(args['indent'] + node.state.id);
@@ -324,9 +384,17 @@ debug = function(node, args) {
 }
 
 /*
-total nodes
-max level
-nodes per level
+on node click, infobox
+  total nodes
+  max level
+  nodes per level
+  data key-values based on function of node
+on svg click, deselect node
+on node doubleclick, zoom to level
+on hover, show node Tooltip
+add key
+functions for de-emphasize or do not display
+sort children
 */
 //f.dft(debug, {indent: ''});
 //r.dft(debug, {indent: '**'});
