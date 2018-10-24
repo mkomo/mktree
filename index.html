@@ -98,16 +98,17 @@ class MkTreeNode {
     return collector;
   }
 
-  getParent() {
-    return this.isRoot() ? this : this.state.parent;
+  getParent(root = this.getRoot()) {
+    return this.isRoot(root) ? this : this.state.parent;
   }
+
+  isRoot(root = this.getRoot()) {
+    return this === root;
+  }
+
 
   getRoot() {
-    return this.isRoot() ? this : this.getParent().getRoot();
-  }
-
-  isRoot() {
-    return this.state.parent === null;
+    return this.state.parent === null ? this : this.state.parent.getRoot();
   }
 
   getAncestors() {
@@ -220,6 +221,9 @@ class MkTreeView {
   }
 
   position(node, dimensions, margin, level, levelNodes, maxDepth) {
+    if (node.state.id == 1024) {
+      console.log(node, dimensions, margin, level, levelNodes.indexOf(node), maxDepth)
+    }
     let index = levelNodes.indexOf(node);
     let levelCount = levelNodes.length;
     let w = dimensions.width - 2*margin;
@@ -247,17 +251,17 @@ class MkTreeView {
     let margin = 24;
     let depthCache = {};
     let root = this.state.root;
-    let maxDepth = root.getMaxDepth();
+    let maxDepth = root.getMaxDepth() + root.getRootDistance();
 
     console.log('start dft');
     root.dft(function(node){
-      let level = node.getRootDistance();
+      let level = node.getRootDistance(root);
       if (!(level in depthCache)) {
-        depthCache[level] = node.getLevelNodes();
+        depthCache[level] = node.getLevelNodes(root);
       }
       nodes[node.state.id] = this.position(node, dimensions, margin, level, depthCache[level], maxDepth);
-      if (!node.isRoot() && node.getParent().state.id in nodes) {
-        edges.push([nodes[node.getParent().state.id], nodes[node.state.id]]);
+      if (!node.isRoot(root) && node.getParent(root).state.id in nodes) {
+        edges.push([nodes[node.getParent(root).state.id], nodes[node.state.id]]);
       }
     }, {}, this);
     console.log('end dft');
@@ -271,24 +275,35 @@ class MkTreeView {
       .x(d=>d.x)
       .y(d=>d.y);
 
+    let done = false;
+    let t = this.svg.transition().duration(750);
     //Edges
     var edge = this.container.selectAll("path." + style.line)
-      .data(edges);
+      .data(edges, d => {
+        if (!done) {
+          console.log(d,`${d[0].node.state.id},${d[1].node.state.id}`)
+          done = true;
+        }
+        return `${d[0].node.state.id},${d[1].node.state.id}`;
+      });
 
     edge.exit().remove();
 
     edge.enter().append("path")
       .attr("class", style.line)
     .merge(edge)
-      .style('stroke','#77777788')
-      .style('stroke-width','1.5px')
-      .attr("d", function(a) {
-        return line(a);
-      });
+      .transition(t)
+        .style('stroke','#77777788')
+        .style('stroke-width','1.5px')
+        .attr("d", function(a) {
+          return line(a);
+        });
 
     //Nodes
     var circle = this.container.selectAll("circle")
-      .data(nodes.filter(node => true));
+      .data(nodes.filter(node => {
+        return true;
+      }), d => d.node.state.id);
     let view = this;
 
     circle.exit().remove();
@@ -296,26 +311,26 @@ class MkTreeView {
       .style("opacity", 1)
     .merge(circle)
       .style('fill', view.state.colorFunction)
-      .attr("cx", function(d) {
-        return d.x;
-      })
-      .attr("cy", function(d) {
-        return d.y;
-      })
-      .attr("r", function(d){
-        return d.r;
-      })
       .on('click', function(d) {
         view.state.focusNode = d.node;
         view.drawInfoBox();
       })
       .on('dblclick', function(d) {
-        console.log('dblclick',d);
         view.state.root = d.node;
         view.draw();
       })
-      .style('stroke','#444')
-      .style('stroke-width','1.5px');
+      .transition(t)
+        .attr("cx", function(d) {
+          return d.x;
+        })
+        .attr("cy", function(d) {
+          return d.y;
+        })
+        .attr("r", function(d){
+          return d.r;
+        })
+        .style('stroke','#444')
+        .style('stroke-width','0.5px');
   }
 
   drawInfoBox() {
