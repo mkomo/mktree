@@ -30,6 +30,9 @@
   #info_box table th {
     text-align: right;
   }
+  text.nodelabel {
+    user-select: none;
+  }
   </style>
 </head>
 <body>
@@ -162,12 +165,16 @@ class MkForest {
 }
 
 class MkTreeView {
+
   constructor(props) {
     this.state = {
       forest: props.forest,
       root: props.root,
       colorFunction: props.colorFunction || function(d) {
         return '#999';
+      },
+      label: props.label || function(d) {
+        return d.node.state.id;
       },
       focusNode: props.focusNode || null
     }
@@ -234,8 +241,10 @@ class MkTreeView {
     let xmax = w * frac/maxFrac;
     let x = xmax * (1.0 * index + 0.5) / (levelCount);
     let radius = 20 / (level + 1);
+    let length = xmax / Math.cos(Math.atan(m));
     return {
       node: node,
+      label: radius > 12 || ((length / (radius * levelCount)) > 3 && radius > 3),
       r: radius,
       x: margin.l + x + radius,
       y: margin.t - m * x + b + radius
@@ -243,6 +252,9 @@ class MkTreeView {
   }
 
   drawEdgesAndNodes() {
+    const MIN_LABEL_SIZE = 6.4;
+    const LABEL_SIZE_FACTOR = 2;
+    const LABEL_SIZE_DEFAULT = 10;
     let edges = [];
     let nodes = {};
     let dimensions = this.getDimensions();
@@ -279,6 +291,7 @@ class MkTreeView {
     ancestors.forEach((node, i) => {
       let n = {
         node: node,
+        label: true,
         r: ancestorRadius,
         x: i*2.5*ancestorRadius + margins.l + ancestorRadius,
         y: margins.b // use bottom margin, since these are the nodes along the top
@@ -288,6 +301,7 @@ class MkTreeView {
       last = n;
     })
 
+    //EDGES
     var style = {
         line: 'edge'
       };
@@ -322,7 +336,8 @@ class MkTreeView {
           return line(a);
         });
 
-    //Nodes
+
+    //NODES
     var circle = this.container.selectAll("circle")
       .data(nodes.filter(node => {
         return true;
@@ -366,6 +381,68 @@ class MkTreeView {
         })
         // .style('stroke','#444')
         // .style('stroke-width','0.5px');
+    //LABELS
+    var nodelabels = this.container.selectAll("text")
+      .data(nodes.filter(d => {
+        return d.label;
+      }), d => d.node.state.id);
+
+    nodelabels.exit().remove();
+
+    nodelabels.enter().append("text")
+      .attr("class", 'nodelabel')
+      .text(view.state.label)
+      .attr("text-anchor", function(d) {
+        return d.r > 12 ? "middle" : "start";
+      })
+      .attr("alignment-baseline", function(d) {
+        return d.r > 12 ? "middle" : "bottom";
+      })
+      .attr("x", function(d){
+        if (d.r > 12) {
+          return d.x;
+        }
+        return d.x + d.r;
+      })
+      .attr("y", function(d){
+        if (d.r > 12) {
+          return d.y;
+        }
+        return d.y - d.r;
+      })
+      .style('opacity',0)
+      .transition(t)
+          .delay(500)
+        .style('opacity',1)
+          .selection()
+    .merge(nodelabels)
+      .style('font-size', function(d){
+        if (!d.r || d.r * LABEL_SIZE_FACTOR > LABEL_SIZE_DEFAULT) {
+          return LABEL_SIZE_DEFAULT + 'px'
+        }
+        return d.r*LABEL_SIZE_FACTOR + 'px';
+      })
+      .attr("text-anchor", function(d) {
+        return d.r > 12 ? "middle" : "start";
+      })
+      .attr("alignment-baseline", function(d) {
+        return d.r > 12 ? "middle" : "bottom";
+      })
+      .transition(t)
+        .attr("x", function(d){
+          if (d.r > 12) {
+            return d.x;
+          }
+          return d.x + d.r;
+        })
+        .attr("y", function(d){
+          if (d.r > 12) {
+            return d.y;
+          }
+          return d.y - d.r;
+        })
+
+    nodelabels.raise();
   }
 
   drawInfoBox() {
@@ -417,7 +494,7 @@ for (let i = 0; i < 15; i++) {
 
 let v = new MkTreeView({
   forest: f,
-  root: r,
+  root: r.getChildren()[0].getChildren()[0],
   focusNode: r,
   colorFunction: function(d) {
     let i = d.node.getRootDistance() * 50;
