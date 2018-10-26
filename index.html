@@ -227,27 +227,32 @@ class MkTreeView {
 
   }
 
-  position(node, dimensions, margin, level, levelNodes, maxDepth) {
-    let index = levelNodes.indexOf(node);
-    let levelCount = levelNodes.length;
+  levelPath(dimensions, margin, level, levelNodes, maxLevel) {
     let w = dimensions.width - margin.l - margin.r;
     let h = dimensions.height - margin.t - margin.b;
     let frac = (1 - 3/(level + 3));
-    let maxFrac = (1 - 3/(maxDepth + 3));
+    let maxFrac = (1 - 3/(maxLevel + 3));
 
     //linear
     let m = h/(w * 1.0);
     let b = h * frac/maxFrac;
     let xmax = w * frac/maxFrac;
-    let x = xmax * (1.0 * index + 0.5) / (levelCount);
-    let radius = 20 / (level + 1);
     let length = xmax / Math.cos(Math.atan(m));
+
     return {
-      node: node,
-      label: radius > 12 || ((length / (radius * levelCount)) > 3 && radius > 3),
-      r: radius,
-      x: margin.l + x + radius,
-      y: margin.t - m * x + b + radius
+      length: length,
+      position: function(node) {
+        let index = levelNodes.indexOf(node);
+        let x = xmax * (1.0 * index + 0.5) / (levelNodes.length);
+        let radius = 20 / (level + 1);
+        return {
+          node: node,
+          label: radius > 12 || ((length / (radius * levelNodes.length)) > 3 && radius > 3),
+          r: radius,
+          x: margin.l + x + radius,
+          y: margin.t - m * x + b + radius
+        }
+      }
     }
   }
 
@@ -275,8 +280,9 @@ class MkTreeView {
     while (levelNodes.length > 0) {
       let child;
       let level = levelNodes[0].getRootDistance(root);
+      let levelPath = this.levelPath(dimensions, margins, level, levelNodes, maxDepth);
       levelNodes.forEach(function(node){
-        nodes[node.state.id] =  view.position(node, dimensions, margins, level, levelNodes, maxDepth);
+        nodes[node.state.id] =  levelPath.position(node);
         if (!node.isRoot(root) && node.getParent(root).state.id in nodes) {
           edges.push([nodes[node.getParent(root).state.id], nodes[node.state.id]]);
         }
