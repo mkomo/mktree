@@ -255,33 +255,37 @@ class MkTreeView {
     const MIN_LABEL_SIZE = 6.4;
     const LABEL_SIZE_FACTOR = 2;
     const LABEL_SIZE_DEFAULT = 10;
+    let view = this;
     let edges = [];
     let nodes = {};
     let dimensions = this.getDimensions();
-    let depthCache = {};
     let root = this.state.root;
     let ancestors = root.getAncestors()
     let maxDepth = root.getMaxDepth() + root.getRootDistance();
 
-
     let margins = {
       l: 24,
       r: 24,
-      t: ancestors.length == 0 ? 24 : 52,
+      t: ancestors.length == 0 ? 24 : 54,
       b: 24
     };
 
     console.log('start dft');
-    root.dft(function(node){
-      let level = node.getRootDistance(root);
-      if (!(level in depthCache)) {
-        depthCache[level] = node.getLevelNodes(root);
-      }
-      nodes[node.state.id] = this.position(node, dimensions, margins, level, depthCache[level], maxDepth);
-      if (!node.isRoot(root) && node.getParent(root).state.id in nodes) {
-        edges.push([nodes[node.getParent(root).state.id], nodes[node.state.id]]);
-      }
-    }, {}, this);
+    let levelNodes = root.getLevelNodes(root);
+    while (levelNodes.length > 0) {
+      let child;
+      let level = levelNodes[0].getRootDistance(root);
+      levelNodes.forEach(function(node){
+        nodes[node.state.id] =  view.position(node, dimensions, margins, level, levelNodes, maxDepth);
+        if (!node.isRoot(root) && node.getParent(root).state.id in nodes) {
+          edges.push([nodes[node.getParent(root).state.id], nodes[node.state.id]]);
+        }
+        if (!child && node.getChildren().length > 0) {
+          child = node.getChildren()[0];
+        }
+      });
+      levelNodes = child ? child.getLevelNodes(root) : [];
+    }
     console.log('end dft');
 
     let last = nodes[root.state.id];
@@ -309,9 +313,7 @@ class MkTreeView {
       .x(d=>d.x)
       .y(d=>d.y);
 
-    let view = this;
     let t = this.svg.transition().duration(750);
-    //Edges
     var edge = this.container.selectAll("path." + style.line)
       .data(edges, d => {
         return `${d[0].node.state.id},${d[1].node.state.id}`;
@@ -335,7 +337,6 @@ class MkTreeView {
         .attr("d", function(a) {
           return line(a);
         });
-
 
     //NODES
     var circle = this.container.selectAll("circle")
@@ -441,7 +442,7 @@ class MkTreeView {
           }
           return d.y - d.r;
         })
-
+    circle.raise();
     nodelabels.raise();
   }
 
