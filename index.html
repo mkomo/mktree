@@ -239,15 +239,22 @@ class MkTreeView {
     let xmax = w * frac/maxFrac;
     let length = xmax / Math.cos(Math.atan(m));
 
+    //TODO make this return type a class
     return {
       length: length,
       position: function(node) {
+        const LABEL_SIZE_FACTOR = 2;
+        const LABEL_SIZE_DEFAULT = 10;
         let index = levelNodes.indexOf(node);
         let x = xmax * (1.0 * index + 0.5) / (levelNodes.length);
         let radius = 20 / (level + 1);
+        let labelSize = (radius * LABEL_SIZE_FACTOR > LABEL_SIZE_DEFAULT)
+          ? LABEL_SIZE_DEFAULT + 'px'
+          : radius*LABEL_SIZE_FACTOR + 'px';
         return {
           node: node,
           label: radius > 12 || ((length / (radius * levelNodes.length)) > 3 && radius > 3),
+          labelSize: labelSize,
           r: radius,
           x: margin.l + x + radius,
           y: margin.t - m * x + b + radius
@@ -257,9 +264,6 @@ class MkTreeView {
   }
 
   drawEdgesAndNodes() {
-    const MIN_LABEL_SIZE = 6.4;
-    const LABEL_SIZE_FACTOR = 2;
-    const LABEL_SIZE_DEFAULT = 10;
     let view = this;
     let edges = [];
     let nodes = {};
@@ -302,6 +306,7 @@ class MkTreeView {
       let n = {
         node: node,
         label: true,
+        labelSize: 10,
         r: ancestorRadius,
         x: i*2.5*ancestorRadius + margins.l + ancestorRadius,
         y: margins.b // use bottom margin, since these are the nodes along the top
@@ -423,12 +428,7 @@ class MkTreeView {
         .style('opacity',1)
           .selection()
     .merge(nodelabels)
-      .style('font-size', function(d){
-        if (!d.r || d.r * LABEL_SIZE_FACTOR > LABEL_SIZE_DEFAULT) {
-          return LABEL_SIZE_DEFAULT + 'px'
-        }
-        return d.r*LABEL_SIZE_FACTOR + 'px';
-      })
+      .style('font-size', d => d.labelSize)
       .attr("text-anchor", function(d) {
         return d.r > 12 ? "middle" : "start";
       })
