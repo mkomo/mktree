@@ -223,21 +223,22 @@ class MkTreeView {
   position(node, dimensions, margin, level, levelNodes, maxDepth) {
     let index = levelNodes.indexOf(node);
     let levelCount = levelNodes.length;
-    let w = dimensions.width - 2*margin;
-    let h = dimensions.height - 2*margin;
+    let w = dimensions.width - margin.l - margin.r;
+    let h = dimensions.height - margin.t - margin.b;
     let frac = (1 - 3/(level + 3));
     let maxFrac = (1 - 3/(maxDepth + 3));
 
     //linear
     let m = h/(w * 1.0);
-    let b = margin + h * frac/maxFrac;
-    let xmax = margin + w * frac/maxFrac;
-    let x = margin/2 + xmax * (1.0 * index + 0.5) / (levelCount);
+    let b = h * frac/maxFrac;
+    let xmax = w * frac/maxFrac;
+    let x = xmax * (1.0 * index + 0.5) / (levelCount);
+    let radius = 20 / (level + 1);
     return {
       node: node,
-      r: 20 / (level + 1),
-      x: x,
-      y: margin - m * x + b
+      r: radius,
+      x: margin.l + x + radius,
+      y: margin.t - m * x + b + radius
     }
   }
 
@@ -245,10 +246,18 @@ class MkTreeView {
     let edges = [];
     let nodes = {};
     let dimensions = this.getDimensions();
-    let margin = 24;
     let depthCache = {};
     let root = this.state.root;
+    let ancestors = root.getAncestors()
     let maxDepth = root.getMaxDepth() + root.getRootDistance();
+
+
+    let margins = {
+      l: 24,
+      r: 24,
+      t: ancestors.length == 0 ? 24 : 52,
+      b: 24
+    };
 
     console.log('start dft');
     root.dft(function(node){
@@ -256,7 +265,7 @@ class MkTreeView {
       if (!(level in depthCache)) {
         depthCache[level] = node.getLevelNodes(root);
       }
-      nodes[node.state.id] = this.position(node, dimensions, margin, level, depthCache[level], maxDepth);
+      nodes[node.state.id] = this.position(node, dimensions, margins, level, depthCache[level], maxDepth);
       if (!node.isRoot(root) && node.getParent(root).state.id in nodes) {
         edges.push([nodes[node.getParent(root).state.id], nodes[node.state.id]]);
       }
@@ -266,13 +275,13 @@ class MkTreeView {
     let last = nodes[root.state.id];
 
     nodes = Object.values(nodes);
-    let ancestors = root.getAncestors()
+    let ancestorRadius = 20;
     ancestors.forEach((node, i) => {
       let n = {
         node: node,
-        r: 20,
-        x: i*50 + margin + 80,
-        y: margin
+        r: ancestorRadius,
+        x: i*2.5*ancestorRadius + margins.l + ancestorRadius,
+        y: margins.b // use bottom margin, since these are the nodes along the top
       }
       nodes.push(n)
       edges.push([n, last])
@@ -286,16 +295,11 @@ class MkTreeView {
       .x(d=>d.x)
       .y(d=>d.y);
 
-    let done = false;
     let view = this;
     let t = this.svg.transition().duration(750);
     //Edges
     var edge = this.container.selectAll("path." + style.line)
       .data(edges, d => {
-        if (!done) {
-          console.log(d,`${d[0].node.state.id},${d[1].node.state.id}`)
-          done = true;
-        }
         return `${d[0].node.state.id},${d[1].node.state.id}`;
       });
 
@@ -303,13 +307,17 @@ class MkTreeView {
 
     edge.enter().append("path")
       .attr("class", style.line)
+      .style('stroke', d=>{
+        return view.state.colorFunction(d[1]);
+      })
+      .style('stroke-width','1.5px')
+      .style('opacity',0)
+      .transition(t)
+          .delay(500)
+        .style('opacity',1)
+          .selection()
     .merge(edge)
       .transition(t)
-        .style('opacity',0.5)
-        .style('stroke', d=>{
-          return view.state.colorFunction(d[0]);
-        })
-        .style('stroke-width','1.5px')
         .attr("d", function(a) {
           return line(a);
         });
@@ -322,6 +330,14 @@ class MkTreeView {
 
     circle.exit().remove();
     circle.enter().append("circle")
+      .on('click', function(d) {
+        view.state.focusNode = d.node;
+        view.drawInfoBox();
+      })
+      .on('dblclick', function(d) {
+        view.state.root = d.node;
+        view.draw();
+      })
       .attr("cx", function(d) {
         return d.x;
       })
@@ -331,17 +347,13 @@ class MkTreeView {
       .attr("r", function(d){
         return d.r;
       })
-      .style("opacity", 1)
+      .style('opacity',0)
+      .transition(t)
+          .delay(500)
+        .style('opacity',1)
+          .selection()
     .merge(circle)
       .style('fill', view.state.colorFunction)
-      .on('click', function(d) {
-        view.state.focusNode = d.node;
-        view.drawInfoBox();
-      })
-      .on('dblclick', function(d) {
-        view.state.root = d.node;
-        view.draw();
-      })
       .transition(t)
         .attr("cx", function(d) {
           return d.x;
