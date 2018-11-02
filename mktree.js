@@ -1,8 +1,9 @@
 let time = Date.now();
 function debug(...args) {
   let elapsed = Date.now() - time;
+  let elapsedString = elapsed > 1000000 ? '...    ' : (('     ' + elapsed).slice(-6) + '  ')
   time = Date.now();
-  console.log(elapsed, ...args);
+  console.log(elapsedString, ...args);
 }
 
 class MkTreeNode {
@@ -45,19 +46,10 @@ class MkTreeNode {
   
   getFilters() {
       if (this.isRoot()) {
-          //debug('getFilters', this.state.filters.slice());
           return this.state.filters.slice();
       } else {
           let pf = this.getParent().getFilters();
-          if (pf.length > 0) {
-              //debug('!!!!!',pf);
-          }
           pf.splice(0,0, ...this.state.filters);
-          
-          if (this.state.filters.length > 0) {
-              //debug('!!!!!',pf);
-          }
-          //debug('filters', filters, this.getParent().getFilters(), this.state.filters.slice())
           return pf;
       }
   }
@@ -209,10 +201,16 @@ class MkTreeView {
   }
 
   setState(newState) {
+    let changed = [];
     for (let key in newState) {
-      this.state[key] = newState[key];
+      if (this.state[key] != newState[key]) {
+        changed.push(key);
+        this.state[key] = newState[key];
+      }
     }
-    this.draw();
+    if (changed.length > 0) {
+      this.draw(changed);
+    }
   }
 
   search(criteria) {
@@ -233,9 +231,9 @@ class MkTreeView {
       }
     }, {}, this);
   }
-  draw() {
+  draw(changed) {
 
-    this.drawInfoBox();
+    this.updateFocus();
 
     var d = this.getDimensions();
 
@@ -244,7 +242,9 @@ class MkTreeView {
       .attr("height", d.height)
       .attr("tabindex", 1);
 
-    this.drawEdgesAndNodes();
+    if (!changed || changed.includes('root')) {
+      this.drawEdgesAndNodes(changed);
+    }
 
   }
   /*
@@ -298,7 +298,7 @@ class MkTreeView {
     }
   }
 
-  drawEdgesAndNodes() {
+  drawEdgesAndNodes(changed) {
     let view = this;
     let edges = [];
     let nodes = {};
@@ -409,10 +409,11 @@ class MkTreeView {
       .data(edges.filter(d => {
         return 'span' in d[1];
       }), d => {
+        if (!d[0] || !d[1]) {
+          console.log('problems', d);
+        }
         return `${d[0].node.state.id},${d[1].node.state.id}`;
       });
-
-    groupEdges.exit().remove();
 
     groupEdges.enter().append("polygon")
       .attr("class", 'group_edge')
@@ -432,6 +433,9 @@ class MkTreeView {
           let c = e[1].span;
           return [a, b, c].map(node => [node.x, node.y].join(',')).join(' ')
         });
+
+    //TODO don't remove till after transition?
+    groupEdges.exit().remove();
     //*/    
     //NODES
     //https://threejs.org/examples/#webgl_materials_texture_rotation for color cube
@@ -498,7 +502,33 @@ class MkTreeView {
       .transition(t)
           .delay(500)
         .style('opacity',1)
-          .selection();
+          .selection().raise();
+    //GROUP NODES
+    var groupNodes = this.container.selectAll("polygon.group_node")
+      .data(nodes.filter(d => {
+        return 'span' in d;
+      }), d => d.node.state.id);
+
+    groupNodes.exit().remove();
+
+    groupNodes.enter().append("polygon")
+      .attr("class", 'group_node')
+      .style('fill', view.state.colorFunction)
+      .style('opacity',0)
+      .transition(t)
+          .delay(500)
+        .style('opacity',1)
+          .selection()
+    .merge(groupNodes)
+      .transition(t)
+        .attr("points", function(n) {
+          let a = {x:n.x,y:n.y-n.r};
+          let b = {x:n.x,y:n.y+n.r};
+          let c = {x:n.span.x,y:n.span.y+n.span.r};
+          let d = {x:n.span.x,y:n.span.y-n.span.r};
+          return [a, b, c, d].map(point => [point.x, point.y].join(',')).join(' ')
+        })
+        .selection().raise();
 
     //LABELS
     var nodelabels = this.container.selectAll("text")
@@ -568,41 +598,17 @@ class MkTreeView {
             return d.y;
           }
           return d.y - d.r;
-        });
-    //GROUP NODES
-    var groupNodes = this.container.selectAll("polygon.group_node")
-      .data(nodes.filter(d => {
-        return 'span' in d;
-      }), d => d.node.state.id);
+        })
+        .selection().raise();
 
-    groupNodes.exit().remove();
-
-    groupNodes.enter().append("polygon")
-      .attr("class", 'group_node')
-      .style('fill', view.state.colorFunction)
-      .style('opacity',0)
-      .transition(t)
-          .delay(500)
-        .style('opacity',1)
-          .selection()
-    .merge(groupNodes)
-      .transition(t)
-        .attr("points", function(n) {
-          let a = {x:n.x,y:n.y-n.r};
-          let b = {x:n.x,y:n.y+n.r};
-          let c = {x:n.span.x,y:n.span.y+n.span.r};
-          let d = {x:n.span.x,y:n.span.y-n.span.r};
-          return [a, b, c, d].map(point => [point.x, point.y].join(',')).join(' ')
-        });
-    debug('end draw');
-    setTimeout(() => {
-      nodelabels.raise();
-      debug('end timeout', 'dom length=', document.body.getElementsByTagName("*").length);
-    }, 2000);
+    debug('end draw', 'dom length=', document.body.getElementsByTagName("*").length);
     
   }
 
-  drawInfoBox() {
+  updateFocus() {
+    let view = this;
+    this.container.selectAll("rect")
+      .classed('focus', d=> (d.node == view.state.focusNode));
     debug('start infoBox');
     if (this.state.focusNode) {
       let graphInfo = {
@@ -643,3 +649,5 @@ class MkTreeView {
     }
   }
 }
+
+debug('loaded script');
