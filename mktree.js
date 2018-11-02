@@ -578,7 +578,7 @@ class MkTreeView {
     groupNodes.exit().remove();
 
     groupNodes.enter().append("polygon")
-      .attr("class", 'group_edge')
+      .attr("class", 'group_node')
       .style('fill', view.state.colorFunction)
       .style('opacity',0)
       .transition(t)
