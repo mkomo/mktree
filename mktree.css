@@ -12,8 +12,9 @@ svg {
 #info_box {
   position: absolute;
   right: 0px;
-  bottom: 10px;
-  /* either height or bottom: height: 100%;*/
+  top: 0px;
+  height: 100%;
+  /* either height or bottom: bottom: 10px; height: 100%;*/
   width: 33%;
   background-color: #fff;
   overflow-y: scroll;
@@ -27,9 +28,24 @@ svg {
   border: 1px solid #444;
 }
 #info_box table .label {
-  width: 150px;
+  max-width: 150px;
   text-align: right;
+  vertical-align: top;
   font-weight: bold;
+}
+#info_box table .link {
+  text-decoration: underline;
+  color: #339;
+}
+#info_box table .link:hover {
+  cursor:pointer;
+}
+#tooltip {
+  position: absolute;
+  display: inline-block;
+  padding: 5px;
+  background-color: #aaa;
+  user-select: none;
 }
 text.nodelabel {
   user-select: none;
@@ -37,6 +53,9 @@ text.nodelabel {
 .node:hover {
   stroke: #333;
   stroke-width: 1;
+}
+.clickable:hover {
+  cursor:pointer;
 }
 .node.focus{
   stroke: #333;
