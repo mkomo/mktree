@@ -673,18 +673,24 @@ class MkTreeView {
       .classed('focus', d=> (view.state.focusNodes.includes(d.node)));
     debug('start infoBox');
     let info;
+    let links = {};
     if (this.state.focusNodes.length > 1) {
       info = {};
       this.state.focusNodes.forEach((node, i) => {
         let f = this.state.infoBox(node);
-        info[i] = Object.values(f).join('; ')
+        info[i] = Object.values(f).join('; ');
+        links[i] = node;
       });
     } else if (this.state.focusNodes.length == 1) {
       info = this.state.infoBox(this.state.focusNodes[0]);
+      if (Object.keys(info).length == 0) {
+        info['data'] = '<empty>';
+      }
+      links[Object.keys(info)[0]] = this.state.focusNodes[0];
     } else {
       info = {
-        nodeCount: this.state.root.getRoot().getNodeCount(true),
-        levelCount: this.state.root.getRoot().getMaxDepth()
+        nodes: this.state.root.getRoot().getNodeCount(true),
+        levels: this.state.root.getRoot().getMaxDepth()
       }
     }
     var entries = this.infoBox.selectAll("tr").data(Object.keys(info));
@@ -696,13 +702,25 @@ class MkTreeView {
     .merge(entries)
     entries = rows.selectAll('td')
       .data(function (row) {
+        let link = links[row];
+        if (link) {
+          return [[row, 'label'], [info[row], 'link', link]]
+        } else {
           return [[row, 'label'], [info[row]]]
+        }
       })
     entries
       .enter()
           .append('td')
       .merge(entries)
           .text(d => d[0])
+          .on('click', d=>{
+            if (d.length > 2) {              
+              view.setState({
+                root: d[2]
+              })
+            }
+          })
           .attr('class', d=>(d.length > 1 ? d[1] : null))
     debug('end infoBox')
   }
