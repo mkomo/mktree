@@ -182,6 +182,7 @@ class MkTreeView {
       infoBox: props.infoBox || function(d) {
           return d.node.state.data;
       },
+      title: props.title || 'Tree',
       filters: props.filters || {},
       filtersOn: [],
       searchTerms: props.searchTerms || null,
@@ -191,6 +192,11 @@ class MkTreeView {
     let view = this;
     this.svg = d3.select("body").append("svg")
       .attr("id", 'graph_svg')
+      .on('click', function(){
+        view.setState({
+          focusNodes: []
+        })
+      })
     let tooltip = d3.select("body").append("span")
       .attr("id", 'tooltip');
     this.tooltip = tooltip;
@@ -333,6 +339,7 @@ class MkTreeView {
   hover(node) {
     d3.event.stopPropagation();
     if (node) {
+      //TODO set Name as a state property of the view or of the node
       this.tooltip
         .style('display', 'inline-block')
         .text(node.state.data.Name);
@@ -427,7 +434,7 @@ class MkTreeView {
     let t = this.svg.transition().duration(750);
     var edge = this.container.selectAll("path." + style.line)
       .data(edges.filter(edge => {
-        return !(edge[0].isHidden || edge[1].isHidden) && !('span' in edge[1]);
+        return !(edge[1].isHidden) && !('span' in edge[1]);
       }), d => {
         return `${d[0].node.state.id},${d[1].node.state.id}`;
       });
@@ -451,7 +458,7 @@ class MkTreeView {
           return line(a);
         });
 
-    /*GROUP_EDGES*/
+    /*GROUP EDGES*/
     var groupEdges = this.container.selectAll("polygon.group_edge")
       .data(edges.filter(d => {
         return 'span' in d[1];
@@ -476,6 +483,7 @@ class MkTreeView {
         view.setState({
           focusNodes: [d[0].node]
         })
+        d3.event.stopPropagation();
       })
       .on('dblclick', function(d) {
         view.setState({
@@ -528,6 +536,7 @@ class MkTreeView {
           .attr("height", function(d){
             return d.r * 2;
           })
+          .style('opacity',1)
           .style('fill', view.state.colorFunction);
     
     circle.enter().append("rect")
@@ -541,6 +550,7 @@ class MkTreeView {
         view.setState({
           focusNodes: [d.node]
         })
+        d3.event.stopPropagation();
       })
       .on('dblclick', function(d) {
         view.setState({
@@ -588,6 +598,7 @@ class MkTreeView {
         view.setState({
           focusNodes: [d.node.getParent()]
         })
+        d3.event.stopPropagation();
       })
       .on('dblclick', function(d) {
         view.setState({
@@ -627,6 +638,7 @@ class MkTreeView {
         view.setState({
           focusNodes: [d.node]
         })
+        d3.event.stopPropagation();
       })
       .on('dblclick', function(d) {
         view.setState({
@@ -698,8 +710,10 @@ class MkTreeView {
     });
     
     debug('start infoBox');
+    let labelClass = 'label';
     let info;
     if (this.state.focusNodes.length > 1) {
+      labelClass = 'label_narrow';
       info = new InfoBox({
         title: "found " + this.state.focusNodes.length + ' results'
       });
@@ -717,32 +731,35 @@ class MkTreeView {
       };
     } else {
       //TODO consider possibility that this is a failed search
+      let data = {};
+      data['nodes visible'] = this.state.root.getNodeCount(true) + this.state.root.getRootDistance();
+      data['levels visible'] = this.state.root.getMaxDepth() + 1;
+      
       info = new InfoBox({
         title: this.state.title,
-        data:  {
-          nodes: this.state.root.getRoot().getNodeCount(true),
-          levels: this.state.root.getRoot().getMaxDepth()
-        }
+        data:  data
       });
     }
     var title = this.titleBox.selectAll("h2#info_box_title").data([info.state.title]).text(d=>d);
     
     let offtree = [];
     console.log('filters',view.state.root.getRoot().getFilters());
-    let isFiltered = 'focus' in view.state.root.getRoot().getFilters();
-    var link = this.titleBox.selectAll("a.info_box_filter").data(isFiltered 
-      ? [['show all', function(){
+    let options = [];
+    if ('focus' in view.state.root.getRoot().getFilters()) {
+      options.push(['show all', function(){
         view.state.root.getRoot().removeFilter('focus');
         view.draw();
-      }]] 
-      : [['filter to focus', function(){
+      }]);
+    } else if (view.state.focusNodes && view.state.focusNodes.length > 0) {
+      options.push(['filter to focus', function(){
         view.state.root.getRoot().addFilter('focus', function(node) {
           return view.state.focusNodes.includes(node);// || node.getAncestors().some(a=>(view.state.focusNodes.includes(a)));
         });
         view.draw();
-        debug('trying to prevent hashtag');
         d3.event.preventDefault();
-      }]]);
+      }]);
+    }
+    var link = this.titleBox.selectAll("a.info_box_filter").data(options);
     link.exit().remove();
     link.enter().append('a')
       .attr('class', 'info_box_filter')
@@ -751,6 +768,7 @@ class MkTreeView {
       .text(d=>d[0])
       .on('click', d=>{
         d[1]();
+        d3.event.stopPropagation();
       });
     //var filterLink = this.sideBar.select("a#info_box_title").data([info.state.title]);
 
@@ -765,9 +783,9 @@ class MkTreeView {
       .data(function (row) {
         let link = info.state.links[row];
         if (link) {
-          return [[row, 'label'], [info.state.data[row], 'link', link]]
+          return [[row, labelClass], [info.state.data[row], 'link', link]]
         } else {
-          return [[row, 'label'], [info.state.data[row]]]
+          return [[row, labelClass], [info.state.data[row]]]
         }
       })
     entries
@@ -788,6 +806,7 @@ class MkTreeView {
                 })                
               }
             }
+            d3.event.stopPropagation();
           })
           .on('dblclick', d=>{
             if (d.length > 2) {
