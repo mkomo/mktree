@@ -10,10 +10,9 @@ class MkTreeNode {
   constructor(props) {
     this.state = {
       id: props.id,
-      displayName: props.displayName || null,
       parent: props.parent || null,
       data: props.data || null,
-      filters: props.filters || [],
+      filters: props.filters || {},
       children: []
     }
     this.toString = function() {
@@ -31,25 +30,39 @@ class MkTreeNode {
     this.state.parent = node;
   }
   
-  setFilters(filters) {
-      debug('setFilters',filters);
-      this.state.filters = filters;
+  addFilter(name, filter) {
+    this.state.filters[name] = filter;
+  }
+  
+  removeFilter(name, filter) {
+    delete this.state.filters[name];
   }
 
   getNodeCount(includeSelf = true) {
-    return this.isIncluded() ? this.getDescendents().length + (includeSelf ? 1 : 0) : 0;
+    return this.isIncluded() ? this.getDescendents(null, includeSelf).length : 0;
   }
   
   isIncluded(root = this.getRoot()) {
-    return this.getFilters().reduce((acc, f) => (acc && f(this)), true);
+    let nodeIsIncluded = Object.values(this.getFilters()).reduce((acc, f) => (acc && f(this)), true);
+    if (nodeIsIncluded) {
+      return true;
+    } else {
+      return this.getDescendents(null, false).some(node=>{
+        return node.isIncluded(root)
+      });
+    }
   }
-  
+
   getFilters() {
       if (this.isRoot()) {
-          return this.state.filters.slice();
+          return Object.assign({}, this.state.filters);
       } else {
           let pf = this.getParent().getFilters();
-          pf.splice(0,0, ...this.state.filters);
+          if (Object.values(this.state.filters).length > 0) {
+            Object.keys(this.state.filters).forEach(key=>{
+              pf[key] = this.state.filters[key];
+            });
+          }
           return pf;
       }
   }
@@ -67,25 +80,22 @@ class MkTreeNode {
   }
 
   getLevelNodes(root = this.getRoot()) {
-    return root.getDescendents(this.getRootDistance());
-  }
-
-  getLevelIndex(root = this.getRoot()) {
-    return this.getLevelNodes(root).indexOf(this);
+    return root.getDescendents(this.getRootDistance(), true);
   }
 
   getChildren() {
     return this.state.children.filter(c => c.isIncluded());
   }
-  
+
   sortChildren(sortFunction) {
     return this.state.children.sort(sortFunction);
   }
 
-  getDescendents(level = null) { //TODO change name; allow boolean includeSelf flag
+  getDescendents(level = null, includeSelf = false) {
     let collector = [];
+    let self = this;
     this.dft((node) => {
-      if (level === null || node.getRootDistance() == level) {
+      if ((level === null || node.getRootDistance() == level) && (includeSelf || node != self)) {
         collector.push(node);
       }
     });
@@ -93,7 +103,7 @@ class MkTreeNode {
   }
 
   getParent(root = this.getRoot()) {
-    return this.isRoot(root) ? this : this.state.parent;
+    return this.isRoot(root) ? null : this.state.parent;
   }
 
   isRoot(root = this.getRoot()) {
@@ -170,7 +180,7 @@ class MkTreeView {
         return d.node.state.id;
       },
       infoBox: props.infoBox || function(d) {
-          return d.node.state;
+          return d.node.state.data;
       },
       filters: props.filters || {},
       filtersOn: [],
@@ -185,6 +195,7 @@ class MkTreeView {
       .attr("id", 'tooltip');
     this.tooltip = tooltip;
     d3.select("body").on('mousemove', function(){
+      
       tooltip
         .style("left", (d3.event.pageX + 28) + "px")		
         .style("top", (d3.event.pageY + 28) + "px");	
@@ -192,12 +203,12 @@ class MkTreeView {
     this.svg.on('mouseover', d=>{view.hover()});
     this.container = this.svg.append('g');
 
-    let sideBar = d3.select("body").append("div")
+    this.sideBar = d3.select("body").append("div")
       .attr("id", 'info_box');
 
-    this.searchBox = sideBar.append('input').attr('class', 'info_element')
+    this.searchBox = this.sideBar.append('input').attr('class', 'info_element')
       .attr('placeholder', 'search graph');
-    this.infoBox = sideBar.append('table').attr('class', 'info_element');
+    
     this.searchBox.on('keypress', function(e){
       if (!e) e = window.event;
       var keyCode = e.keyCode || e.which;
@@ -207,6 +218,11 @@ class MkTreeView {
       }
     })
 
+    this.titleBox = this.sideBar.append('div').attr('class', 'info_element');
+    this.titleBox.append('h2').attr('id', 'info_box_title');
+
+    this.infoBox = this.sideBar.append('table').attr('class', 'info_element');
+    
     this.search = this.search.bind(this);
     this.hover = this.hover.bind(this);
   }
@@ -228,12 +244,15 @@ class MkTreeView {
     window.criteria = criteria;
     debug('search!!!', criteria);
     //search
-    let term = criteria.toLowerCase();
+    let terms = [criteria.toLowerCase()];
+    if (terms[0].includes(';')){
+      terms = terms[0].split(';').map(e=>(e.includes('<') ?e.split('<')[1].split('>')[0]: e))
+    }
     let nodes = [];
     root.dft(function(node){
       // search
       for (let key in node.state.data) {
-        if ((this.state.searchTerms == null || this.state.searchTerms.includes(key)) && node.state.data[key].toLowerCase().includes(term)) {
+        if ((this.state.searchTerms == null || this.state.searchTerms.includes(key)) && terms.some(term=>(node.state.data[key].toLowerCase().includes(term)))) {
           //debug('found',node.state.data[key],node);
           nodes.push(node);
           return;
@@ -244,9 +263,8 @@ class MkTreeView {
       focusNodes: nodes
     })
   }
-  draw(changed) {
 
-    this.updateFocus();
+  draw(changed) {
 
     var d = this.getDimensions();
 
@@ -255,10 +273,8 @@ class MkTreeView {
       .attr("height", d.height)
       .attr("tabindex", 1);
 
-    if (!changed || changed.includes('root')) {
-      this.drawEdgesAndNodes(changed);
-    }
-
+    let redraw = !changed || changed.includes('root');
+    this.updateFocus(redraw);
   }
   /*
     this.drawKey();
@@ -277,7 +293,7 @@ class MkTreeView {
     let w = dimensions.graphWidth - margin.l - margin.r;
     let h = dimensions.height - margin.t - margin.b;
     let frac = (1 - 3/(level + 3));
-    let maxFrac = (1 - 3/(maxLevel + 3));
+    let maxFrac = maxLevel == 0 ? 1 :(1 - 3/(maxLevel + 3));
 
     //linear
     let m = h/(w * 1.0);
@@ -293,6 +309,9 @@ class MkTreeView {
         const LABEL_SIZE_DEFAULT = 10;
         let index = levelNodes.indexOf(node);
         let x = xmax * (1.0 * index + 0.5) / (levelNodes.length);
+        if (isNaN(x)) {
+          console.log('something went wrong', level, levelNodes.length, maxLevel, xmax, maxFrac);
+        }
         let radius = 20 / (level + 1);
         let labelSize = (radius * LABEL_SIZE_FACTOR > LABEL_SIZE_DEFAULT)
           ? LABEL_SIZE_DEFAULT + 'px'
@@ -319,11 +338,12 @@ class MkTreeView {
         .text(node.state.data.Name);
     } else {
       this.tooltip
-        .style('display', 'none')      
+        .style('display', 'none')
+        .text('');
     }
   }
 
-  drawEdgesAndNodes(changed) {
+  drawEdgesAndNodes() {
     let view = this;
     let edges = [];
     let nodes = {};
@@ -340,10 +360,12 @@ class MkTreeView {
     };
 
     debug('start dft');
-    let levelNodes = root.getLevelNodes(root);
-    while (levelNodes.length > 0) {
-      let child;
-      let level = levelNodes[0].getRootDistance(root);
+    let child = root;
+    while (child) {
+      let levelNodes = child.getLevelNodes(root);
+      let level = child.getRootDistance(root);
+      //console.log('dft level nodes', levelNodes);
+      child = null;
       let totalbreadth = 0;
       let levelPath = this.levelPath(dimensions, margins, level, levelNodes, maxDepth);
       levelNodes.forEach(function(node){
@@ -372,7 +394,6 @@ class MkTreeView {
           }
         });
       }
-      levelNodes = child ? child.getLevelNodes(root) : [];
     }
     debug('end dft');
 
@@ -487,7 +508,7 @@ class MkTreeView {
     //https://en.wikipedia.org/wiki/Organizational_structure_of_the_United_States_Department_of_Defense
     var circle = this.container.selectAll("rect")
       .data(nodes.filter(node => {
-        return !node.isHidden && !('span' in node);
+        return (!node.isHidden && !('span' in node)) || view.state.focusNodes.includes(node.node);
       }), d => d.node.state.id);
 
     debug('start circle with focusNodes', view.state.focusNodes);
@@ -667,33 +688,73 @@ class MkTreeView {
     
   }
 
-  updateFocus() {
+  updateFocus(shouldRedraw) {
     let view = this;
     this.container.selectAll("rect")
       .classed('focus', d=> (view.state.focusNodes.includes(d.node)));
+
+    view.state.focusNodes.forEach(node => {
+      shouldRedraw = shouldRedraw || (view.container.selectAll('rect#' + node.state.id).size() == 0);
+    });
+    
     debug('start infoBox');
     let info;
-    let links = {};
     if (this.state.focusNodes.length > 1) {
-      info = {};
+      info = new InfoBox({
+        title: "found " + this.state.focusNodes.length + ' results'
+      });
       this.state.focusNodes.forEach((node, i) => {
-        let f = this.state.infoBox(node);
-        info[i] = Object.values(f).join('; ');
-        links[i] = node;
+        let ib = this.state.infoBox(node);
+        info.state.links[i + ':'] = node;
+        info.state.data[i + ':'] = ib.state.title;
+        info.state.data[i + ' '] = Object.keys(ib.state.data).filter(k=>ib.state.limitedKeys.includes(k)).map(k=>ib.state.data[k]).join('; ');
       });
     } else if (this.state.focusNodes.length == 1) {
       info = this.state.infoBox(this.state.focusNodes[0]);
-      if (Object.keys(info).length == 0) {
-        info['data'] = '<empty>';
-      }
-      links[Object.keys(info)[0]] = this.state.focusNodes[0];
+      console.log(info);
+      if (Object.keys(info.state.data).length == 0) {
+        info.state.data = {data: '<empty>'};
+      };
     } else {
-      info = {
-        nodes: this.state.root.getRoot().getNodeCount(true),
-        levels: this.state.root.getRoot().getMaxDepth()
-      }
+      //TODO consider possibility that this is a failed search
+      info = new InfoBox({
+        title: this.state.title,
+        data:  {
+          nodes: this.state.root.getRoot().getNodeCount(true),
+          levels: this.state.root.getRoot().getMaxDepth()
+        }
+      });
     }
-    var entries = this.infoBox.selectAll("tr").data(Object.keys(info));
+    var title = this.titleBox.selectAll("h2#info_box_title").data([info.state.title]).text(d=>d);
+    
+    let offtree = [];
+    console.log('filters',view.state.root.getRoot().getFilters());
+    let isFiltered = 'focus' in view.state.root.getRoot().getFilters();
+    var link = this.titleBox.selectAll("a.info_box_filter").data(isFiltered 
+      ? [['show all', function(){
+        view.state.root.getRoot().removeFilter('focus');
+        view.draw();
+      }]] 
+      : [['filter to focus', function(){
+        view.state.root.getRoot().addFilter('focus', function(node) {
+          return view.state.focusNodes.includes(node);// || node.getAncestors().some(a=>(view.state.focusNodes.includes(a)));
+        });
+        view.draw();
+        debug('trying to prevent hashtag');
+        d3.event.preventDefault();
+      }]]);
+    link.exit().remove();
+    link.enter().append('a')
+      .attr('class', 'info_box_filter')
+      .attr('href', '#')
+    .merge(link)
+      .text(d=>d[0])
+      .on('click', d=>{
+        d[1]();
+      });
+    //var filterLink = this.sideBar.select("a#info_box_title").data([info.state.title]);
+
+    var entries = this.infoBox.selectAll("tr").data(Object.keys(info.state.data));
 
     entries.exit().remove();
 
@@ -702,27 +763,47 @@ class MkTreeView {
     .merge(entries)
     entries = rows.selectAll('td')
       .data(function (row) {
-        let link = links[row];
+        let link = info.state.links[row];
         if (link) {
-          return [[row, 'label'], [info[row], 'link', link]]
+          return [[row, 'label'], [info.state.data[row], 'link', link]]
         } else {
-          return [[row, 'label'], [info[row]]]
+          return [[row, 'label'], [info.state.data[row]]]
         }
       })
     entries
       .enter()
           .append('td')
       .merge(entries)
-          .text(d => d[0])
+          .html(d => d[0])
+          .attr('class', d=>(d.length > 1 ? d[1] : null))
           .on('click', d=>{
-            if (d.length > 2) {              
-              view.setState({
-                root: d[2]
-              })
+            if (d.length > 2) {
+              if (Array.isArray(d[2])) {
+                view.setState({
+                  focusNodes: d[2]
+                })                
+              } else {
+                view.setState({
+                  root: d[2]
+                })                
+              }
             }
           })
-          .attr('class', d=>(d.length > 1 ? d[1] : null))
+          .on('dblclick', d=>{
+            if (d.length > 2) {
+              if (Array.isArray(d[2])) {
+                //do nothing
+              } else {
+                view.setState({
+                  focusNodes: [d[2]]
+                })                
+              }
+            }
+          })
     debug('end infoBox')
+    if (shouldRedraw) {
+      this.drawEdgesAndNodes();
+    }
   }
 
   getDimensions() {
@@ -732,6 +813,17 @@ class MkTreeView {
       height: window.innerHeight -
         (document.getElementById('graph_svg').getBoundingClientRect().top -
           document.body.getBoundingClientRect().top)
+    }
+  }
+}
+
+class InfoBox{
+  constructor(props = {}) {
+    this.state = {
+      title: props.title || null,
+      data: props.data || {},
+      limitedKeys: props.limitedKeys || {},
+      links: props.links || {}
     }
   }
 }
