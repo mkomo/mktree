@@ -27,18 +27,23 @@ svg {
   padding: 5px;
   border: 1px solid #444;
 }
+#info_box_title {
+  padding: 0;
+}
+.info_box_filter {
+  padding-left: 10px;
+}
 #info_box table .label {
   max-width: 150px;
   text-align: right;
   vertical-align: top;
-  font-weight: bold;
+  color: #aaa;
 }
 #info_box table .link {
-  text-decoration: underline;
-  color: #339;
+  color: #69D;
 }
 #info_box table .link:hover {
-  cursor:pointer;
+  cursor: pointer;
 }
 #tooltip {
   position: absolute;
