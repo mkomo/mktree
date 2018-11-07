@@ -34,7 +34,13 @@ svg {
   padding-left: 10px;
 }
 #info_box table .label {
-  max-width: 150px;
+  width: 150px;
+  text-align: right;
+  vertical-align: top;
+  color: #aaa;
+}
+#info_box table .label_narrow {
+  width: 30px;
   text-align: right;
   vertical-align: top;
   color: #aaa;
