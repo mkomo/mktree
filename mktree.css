@@ -33,14 +33,17 @@ svg {
 .info_box_filter {
   padding-left: 10px;
 }
+
+#info_box table td {
+  vertical-align: top;
+}
 #info_box table .label {
   width: 150px;
   text-align: right;
-  vertical-align: top;
   color: #aaa;
 }
 #info_box table .label_narrow {
-  width: 30px;
+  width: 40px;
   text-align: right;
   vertical-align: top;
   color: #aaa;
@@ -70,5 +73,5 @@ text.nodelabel {
 }
 .node.focus{
   stroke: #333;
-  stroke-width: 5;
+  stroke-width: 2;
 }
