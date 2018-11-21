@@ -213,8 +213,8 @@ class MkTreeView {
       tooltip: props.tooltip || function(node) {
         return node.state.id;
       },
-      infoBox: props.infoBox || function(d) {
-          return d.node.state.data;
+      infoBox: props.infoBox || function(node) {
+        return InfoBox.of(node);
       },
       title: props.title || 'Tree',
       filters: props.filters || {},
@@ -706,10 +706,10 @@ class MkTreeView {
       .style('opacity',0)
       .on('mouseover', d=>groupMouseover(d.node.getParent()))
       .on('click', function(d) {
+        d3.event.stopPropagation();
         view.setState({
           focusNodes: [d.node.getParent()]
         })
-        d3.event.stopPropagation();
       })
       .on('dblclick', function(d) {
         view.setState({
@@ -772,10 +772,10 @@ class MkTreeView {
         view.hover(d.node);
       })
       .on('click', function(d) {
+        d3.event.stopPropagation();
         view.setState({
           focusNodes: [d.node]
         })
-        d3.event.stopPropagation();
       })
       .on('dblclick', function(d) {
         view.setState({
@@ -819,10 +819,10 @@ class MkTreeView {
         view.hover(d.node);
       })
       .on('click', function(d) {
+        d3.event.stopPropagation();
         view.setState({
           focusNodes: [d.node]
         })
-        d3.event.stopPropagation();
       })
       .on('dblclick', function(d) {
         view.setState({
@@ -914,9 +914,10 @@ class MkTreeView {
       });
     } else if (this.state.focusNodes.length == 1) {
       //one focus node
+      console.log('focusNodes!!!',this.state.focusNodes);
       info = this.state.infoBox(this.state.focusNodes[0]);
       if (Object.keys(info.state.data).length == 0) {
-        info.state.data = {data: '<empty>'};
+        info.state.data = {data: '(empty)'};
       };
     } else {
       //no focus node
@@ -982,8 +983,8 @@ class MkTreeView {
     .merge(link)
       .text(d=>d[0])
       .on('click', d=>{
-        d[1]();
         d3.event.stopPropagation();
+        d[1]();
       });
     //var filterLink = this.sideBar.select("a#info_box_title").data([info.state.title]);
 
@@ -1010,6 +1011,7 @@ class MkTreeView {
           .html(d => d[0])
           .attr('class', d=>(d.length > 1 ? d[1] : null))
           .on('click', d=>{
+            d3.event.stopPropagation();
             if (d.length > 2) {
               let link = d[2];
               if (Array.isArray(link)) {
@@ -1024,7 +1026,6 @@ class MkTreeView {
                 })
               }
             }
-            d3.event.stopPropagation();
           })
           .on('dblclick', d=>{
             if (d.length > 2) {
@@ -1061,6 +1062,45 @@ class InfoBox{
     }
   }
 }
+InfoBox.of = function(node, mainKey = null, childKey = 'children', descendentKey = 'descendents', dataKeyFilterFunc = (key=>true), dataCleanFunc = ((val, key)=>val)) {
+  debug('InfoBox.of', node, mainKey, node.state.data[mainKey]);
+  let data = {};
+  let links = {};
+  let title = (mainKey === null) ? node.getId() : node.state.data[mainKey].trim();
+  links[mainKey] = node;
+  if (!node.isRoot()) {
+    let parent = node.getParent();
+    let indent = ""
+    while (parent != null) {
+      let key = parentKey + (indent.length > 0 ? " (" + ((indent.length/6)+1) + ")" : '')
+      let parentTitle = (mainKey === null) ? parent.getId() : parent.state.data[mainKey].trim()
+      data[key] = indent + parentTitle;
+      links[key] = parent;
+      parent = parent.getParent();
+      indent = indent + "&nbsp;";
+    }
+  }
+  if (node.getChildren().length > 0) {
+      data[childKey] = node.getChildren().length;
+      links[childKey] = node.getChildren();
+      data[descendentKey] = node.getNodeCount(false);
+      links[descendentKey] = node.getDescendents();
+  }
+
+  Object.keys(node.getData()).filter(dataKeyFilterFunc).forEach(key=>{
+    let val = dataCleanFunc(node.state.data[key], key);
+    if (val != null) {
+      data[key] = val;
+    }
+  })
+
+  return new InfoBox({
+    title: title,
+    data: data,
+    limitedKeys: ltdKeys,
+    links: links
+  });
+}
 
 function generateRandomTree(size, //total number of nodes in trees
     levelCount, //total number of levels in tree
@@ -1076,13 +1116,13 @@ function generateRandomTree(size, //total number of nodes in trees
   let rootNode;
 
   while (nodesAdded < size) {
-    let nodeId = currentLevelIndex + "_" + currentLevel.length;
+    let nodeId = "l" + currentLevelIndex + "n" + currentLevel.length;
     let node = new MkTreeNode({id: nodeId, data: {}});
     currentLevel.push(node);
     nodesAdded++;
 
     if (currentLevelIndex !== 0) {
-      let parent = lastLevel[Math.floor(Math.random()*lastLevel.length)];
+      let parent = lastLevel[Math.floor((Math.pow(Math.random(),2))*lastLevel.length)];
       parent.addChild(node);
     } else {
       rootNode = node;
