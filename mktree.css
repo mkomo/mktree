@@ -56,7 +56,7 @@ svg {
 }
 #tooltip {
   position: absolute;
-  display: inline-block;
+  display: none;
   padding: 5px;
   background-color: #aaa;
   user-select: none;
@@ -74,4 +74,5 @@ text.nodelabel {
 .node.focus{
   stroke: #333;
   stroke-width: 2;
+  opacity: 1.0!important;
 }
