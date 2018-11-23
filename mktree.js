@@ -222,6 +222,7 @@ class MkTreeView {
       searchFields: props.searchFields || null,
       search: props.search || null,
       focusNodes: props.focusNodes || [],
+      infoBoxNode: props.infoBoxNode || [],
       childString: props.childString || 'children',
     }
     this.state.filters['focus'] = function(node) {
@@ -382,7 +383,7 @@ class MkTreeView {
     
     let searchFields = this.state.searchFields;
     let nodes = [];
-    root.dft(function(node){
+    this.state.root.getRoot().dft(function(node){
       // search
       for (let key in node.state.data) {
         if ((searchFields == null || searchFields.includes(key)) 
@@ -423,6 +424,7 @@ class MkTreeView {
   }
 
   levelPath(dimensions, margins, level, levelNodes, maxLevel, levelLength = null, nodes = null) {
+    let root = this.state.root;
     levelLength = levelLength == null ? levelNodes.length : levelLength
     let w = dimensions.graphWidth - margins.l - margins.r;
     let h = dimensions.height - margins.t - margins.b;
@@ -468,7 +470,7 @@ class MkTreeView {
     }
     
     //TODO optimize view for sparce view: radius based on density; 
-    console.log('level info', level, [levelLength, levelNodes.length], xLineEnd, radius);
+    //console.log('level info', level, [levelLength, levelNodes.length], xLineEnd, radius);
     //TODO make this return type a LevelView class, and make a NodeView class;
     return {
       length: length,
@@ -572,6 +574,7 @@ class MkTreeView {
           }
         });
       }
+      debug('level summary', levelNodes.length, levelNodes.filter(n=>(n.getChildren().length > 0)).length);
     }
     debug('end traversal');
 
@@ -909,7 +912,7 @@ class MkTreeView {
         let key = (i < nodesUnderRoot.length) ? i+1 : ('x ' + (i - nodesUnderRoot.length + 1));
         info.state.links[key + ':'] = node;
         info.state.data[key + ':'] = ib.state.title;
-        info.state.data[key + '.'] = Object.keys(ib.state.data).filter(k=>ib.state.limitedKeys.includes(k)).map(k=>ib.state.data[k]).join('; ');
+        info.state.data[key + '.'] = Object.keys(ib.state.data).filter(k=>(ib.state.limitedKeys === null || ib.state.limitedKeys.includes(k))).map(k=>ib.state.data[k]).join('; ');
       });
     } else if (this.state.focusNodes.length == 1) {
       //one focus node
@@ -1056,17 +1059,19 @@ class InfoBox{
     this.state = {
       title: props.title || null,
       data: props.data || {},
-      limitedKeys: props.limitedKeys || {},
+      limitedKeys: props.limitedKeys || [],
       links: props.links || {}
     }
   }
 }
-InfoBox.of = function(node, mainKey = null, childKey = 'children', descendentKey = 'descendents', dataKeyFilterFunc = (key=>true), dataCleanFunc = ((val, key)=>val)) {
-  debug('InfoBox.of', node, mainKey, node.state.data[mainKey]);
+InfoBox.of = function(node, mainKey = null, parentKey = 'parent', childKey = 'children', descendentKey = 'descendents', dataKeySelectFunc = (keys=>keys), dataCleanFunc = ((val, key)=>val), limitedKeys = null) {
   let data = {};
   let links = {};
   let title = (mainKey === null) ? node.getId() : node.state.data[mainKey].trim();
+  //top datum
+  data[mainKey] = node.getData()[mainKey];
   links[mainKey] = node;
+  //ancestor data
   if (!node.isRoot()) {
     let parent = node.getParent();
     let indent = ""
@@ -1079,14 +1084,16 @@ InfoBox.of = function(node, mainKey = null, childKey = 'children', descendentKey
       indent = indent + "&nbsp;";
     }
   }
+  //descendent data
   if (node.getChildren().length > 0) {
       data[childKey] = node.getChildren().length;
       links[childKey] = node.getChildren();
       data[descendentKey] = node.getNodeCount(false);
       links[descendentKey] = node.getDescendents();
   }
-
-  Object.keys(node.getData()).filter(dataKeyFilterFunc).forEach(key=>{
+  //other data
+  let otherDataKeys = dataKeySelectFunc(Object.keys(node.getData()))
+  otherDataKeys.forEach(key=>{
     let val = dataCleanFunc(node.state.data[key], key);
     if (val != null) {
       data[key] = val;
@@ -1096,10 +1103,14 @@ InfoBox.of = function(node, mainKey = null, childKey = 'children', descendentKey
   return new InfoBox({
     title: title,
     data: data,
-    limitedKeys: ltdKeys,
+    limitedKeys: limitedKeys,
     links: links
   });
 }
+
+//cdnjs.cloudflare.com/ajax/libs/seedrandom/2.3.10/seedrandom.js
+//TODO make this private
+!function(a,b,c,d,e,f,g,h,i){function j(a){var b,c=a.length,e=this,f=0,g=e.i=e.j=0,h=e.S=[];for(c||(a=[c++]);d>f;)h[f]=f++;for(f=0;d>f;f++)h[f]=h[g=s&g+a[f%c]+(b=h[f])],h[g]=b;(e.g=function(a){for(var b,c=0,f=e.i,g=e.j,h=e.S;a--;)b=h[f=s&f+1],c=c*d+h[s&(h[f]=h[g=s&g+b])+(h[g]=b)];return e.i=f,e.j=g,c})(d)}function k(a,b){var c,d=[],e=typeof a;if(b&&"object"==e)for(c in a)try{d.push(k(a[c],b-1))}catch(f){}return d.length?d:"string"==e?a:a+"\0"}function l(a,b){for(var c,d=a+"",e=0;e<d.length;)b[s&e]=s&(c^=19*b[s&e])+d.charCodeAt(e++);return n(b)}function m(c){try{return o?n(o.randomBytes(d)):(a.crypto.getRandomValues(c=new Uint8Array(d)),n(c))}catch(e){return[+new Date,a,(c=a.navigator)&&c.plugins,a.screen,n(b)]}}function n(a){return String.fromCharCode.apply(0,a)}var o,p=c.pow(d,e),q=c.pow(2,f),r=2*q,s=d-1,t=c["seed"+i]=function(a,f,g){var h=[];f=1==f?{entropy:!0}:f||{};var o=l(k(f.entropy?[a,n(b)]:null==a?m():a,3),h),s=new j(h);return l(n(s.S),b),(f.pass||g||function(a,b,d){return d?(c[i]=a,b):a})(function(){for(var a=s.g(e),b=p,c=0;q>a;)a=(a+c)*d,b*=d,c=s.g(1);for(;a>=r;)a/=2,b/=2,c>>>=1;return(a+c)/b},o,"global"in f?f.global:this==c)};if(l(c[i](),b),g&&g.exports){g.exports=t;try{o=require("crypto")}catch(u){}}else h&&h.amd&&h(function(){return t})}(this,[],Math,256,6,52,"object"==typeof module&&module,"function"==typeof define&&define,"random");
 
 function generateRandomTree(size, //total number of nodes in trees
     levelCount, //total number of levels in tree
@@ -1107,22 +1118,29 @@ function generateRandomTree(size, //total number of nodes in trees
     childProbDist = null) { //function with domain [0, levelCount - 1]...
   if (perLevelCount === null) {
     perLevelCount = (level)=>(2 << level);
+  } else if (Array.isArray(perLevelCount)) {
+    let levelCountArray = perLevelCount;
+    perLevelCount = (level)=>(levelCountArray[level]);
   }
   let lastLevel = null;
   let currentLevel = [];
   let nodesAdded = 0;
   let currentLevelIndex = 0;
   let rootNode;
+  
+  //TODO consider the possibility that the strongest correlation in an organization might be: the more siblings you have and the farther from root you are, the less likely you are to be a parent
 
   while (nodesAdded < size) {
-    let nodeId = "l" + currentLevelIndex + "n" + currentLevel.length;
-    let node = new MkTreeNode({id: nodeId, data: {}});
+    let nodeId = "L" + currentLevelIndex + "N" + currentLevel.length;
+    let node = new MkTreeNode({id: nodeId, data: {id: nodeId}});
     currentLevel.push(node);
     nodesAdded++;
 
     if (currentLevelIndex !== 0) {
-      let parent = lastLevel[Math.floor((Math.pow(Math.random(),2))*lastLevel.length)];
+      let potentialParents = childProbDist ? childProbDist[currentLevelIndex - 1] : lastLevel.length;
+      let parent = lastLevel[Math.floor((Math.pow(Math.random(),2))*potentialParents)];
       parent.addChild(node);
+      d3.shuffle(parent.state.children);
     } else {
       rootNode = node;
     }
