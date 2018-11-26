@@ -34,8 +34,13 @@ svg {
   padding-left: 10px;
 }
 
+#info_box table {
+  table-layout: fixed;
+}
+
 #info_box table td {
   vertical-align: top;
+  overflow-wrap: break-word;
 }
 #info_box table .label {
   width: 150px;
