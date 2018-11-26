@@ -29,7 +29,7 @@ class MkTreeNode {
     this.state = {
       id: props.id,
       parent: props.parent || null,
-      data: props.data || {},
+      data: props.data || {}, //TODO change to 'attributes'
       filters: props.filters || [],
       children: []
     }
@@ -932,15 +932,15 @@ class MkTreeView {
       let levelCount = root.getMaxDepth() + 1;
       data['levels visible'] = levelCount
       //for (let i = 0; i < levelCount; i++) data['count @ level '+i] = root.getDescendents(root.getRootDistance() + i, true).length;
-      Object.keys(view.state.filters).forEach(filterName=>{
-        let filterKey = 'filter by ' + filterName;
+      Object.keys(view.state.filters).forEach((filterName, index)=>{
+        let filterKey = 'filter (' + index + ')';
         if (!view.state.filtersOn.includes(filterName)) {
           data[filterKey] = filterName;
           links[filterKey] = function(){
             view.addFilter(filterName);
           }
         } else {
-          data[filterKey] = 'remove filter ' + filterName;
+          data[filterKey] = filterName + ' (remove)';
           links[filterKey] = function(){
             view.removeFilter(filterName);
           }
@@ -1050,7 +1050,9 @@ class MkTreeView {
 
     debug('end infoBox')
     if (shouldRedraw) {
-      this.drawEdgesAndNodes();
+      setTimeout(()=>{
+        view.drawEdgesAndNodes();
+      }, 10);
     }
   }
 }
@@ -1059,12 +1061,13 @@ class InfoBox{
   constructor(props = {}) {
     this.state = {
       title: props.title || null,
-      data: props.data || {},
+      data: props.data || {},//TODO change to 'entries'
       limitedKeys: props.limitedKeys || [],
       links: props.links || {}
     }
   }
 }
+
 InfoBox.of = function(node, mainKey = null, parentKey = 'parent', childKey = 'children', descendentKey = 'descendents', dataKeySelectFunc = (keys=>keys), dataCleanFunc = ((val, key)=>val), limitedKeys = null) {
   let data = {};
   let links = {};
