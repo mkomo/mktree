@@ -9,12 +9,12 @@ function debug(...args) {
 Node: id, type, data, provenance
   TreeNode: parent, children
 Edge: sourceNodeId, destNodeId, getId()(derived from source and dest), edgeType (directional, non), data, provenance
-Graph: name, subGraphs, nodes, edges, nodeFilters, edgeFilters
+Graph: name, subGraphs, nodes, edges
   DirectedGraph
     DAG
       Forest
         Tree
-GraphView: graph, nodeFiltersActive, edgeFiltersActive, nodeViews, edgeViews, groupNodeViews, groupEdgeViews, cliqueViews
+GraphView: graph, nodeFilters, edgeFilters, nodeFiltersActive, edgeFiltersActive, nodeViews, edgeViews, groupNodeViews, groupEdgeViews, cliqueViews
   ForestView:
     TreeView:
 NodeView: nodeId, x, y, radius, label, focusTypes
@@ -24,26 +24,68 @@ GroupEdgeView: sourceNodeId, destNodeIds...
 CliqueView: nodeIds, ...
 EditableGraphView: nodeViews,
 */
-class MkTreeNode {
+class MkNode {
   constructor(props) {
-    this.state = {
-      id: props.id,
-      parent: props.parent || null,
-      attributes: props.attributes || {},
-      filters: props.filters || [],
-      children: []
-    }
-    this.toString = function() {
-      return props.id;
-    }
+    this.state = {};
+    this.state.id = props.id;
+    this.state.graph = props.graph;
+    this.state.attributes = props.attributes || {};
+    
+    this.state.graph.addNode(this);
   }
 
+  getFilters() {
+    return this.getGraph().getFilters();
+  }
+
+  getExcludingFilters() {
+    let filters = this.getFilters();
+    return Object.keys(filters).filter(filterName => !filters[filterName](this));
+  }
+
+  //about this node
   getId(){
     return this.state.id;
   }
 
   getAttributes(){
     return this.state.attributes;
+  }
+
+  getGraph() {
+    return this.state.graph;
+  }
+
+  isIncludedSelf() {
+    return Object.values(this.getFilters()).reduce((acc, f) => (acc && f(this)), true);
+  }
+
+  toString() {
+    return this.getId();
+  }
+}
+
+class MkTreeNode extends MkNode {
+  constructor(props) {
+    super(props);
+    this.state.parent = props.parent || null;
+    this.state.children = [];
+  }
+
+  isIncluded() {
+    return this.isIncludedSelf() || this.isIncludedBecauseOfDescendent();
+  }
+
+  isIncludedBecauseOfDescendent() {
+    return this.getFirst(node=>{
+      return node.isIncludedSelf();
+    }, false) !== null;
+  }
+
+  //change node
+
+  setParent(node) {
+    this.state.parent = node;
   }
 
   addChild(node, index = null) {
@@ -55,91 +97,15 @@ class MkTreeNode {
     node.setParent(this);
   }
 
-  setParent(node) {
-    this.state.parent = node;
-  }
-
-  isIncluded(root = this.getRoot()) {
-    return this.isIncludedSelf(root) || this.isIncludedBecauseOfDescendent(root);
-  }
-
-  isIncludedSelf(root = this.getRoot()) {
-    return Object.values(this.getFilters()).reduce((acc, f) => (acc && f(this)), true);
-  }
-
-  isIncludedBecauseOfDescendent(root = this.getRoot()) {
-    return this.getFirst(node=>{
-      return node.isIncludedSelf(root);
-    }, false) !== null;
-  }
-
-  getExcludingFilters() {
-    let filters = this.getFilters();
-    return Object.keys(filters).filter(filterName => !filters[filterName](this));
-  }
-
-  setFilters(filters) {
-    this.state.filters = filters;
-  }
-
-  getFilters() {
-    let filters = {};
-    Object.keys(this.state.filters).forEach(filterName => {
-      filters[filterName] = this.state.filters[filterName];
-    });
-    if (this.isRoot()) {
-      return filters;
-    } else {
-      let pf = this.getParent().getFilters();
-      Object.keys(filters).forEach(filter=>{
-        pf[filterName] = filters[filterName];
-      });
-      return pf;
-    }
-  }
-
-  getMaxDepth(unfiltered = false) {
-    let children = this.getChildren(unfiltered)
-    if (children.length == 0) {
-      return 0;
-    } else {
-      return 1 + children.map(n => n.getMaxDepth(unfiltered)).reduce(( max, cur ) => Math.max( max, cur ), 0);
-    }
-  }
-
-  getRootDistance(root = this.getRoot()) {
-    return this === root ? 0 : 1 + this.getParent().getRootDistance(root);
-  }
-
-  getLevelNodes(root = this.getRoot(), unfiltered = false) {
-    return root.getDescendentsAtLevel(this.getRootDistance(), unfiltered);
-  }
-
-  getChildren(unfiltered = false) {
-    return this.state.children.filter(c => unfiltered || (c.isIncluded()));
-  }
-
-  getMrca(node) {
-    if (node == null) {
-      return this;
-    } else {
-      let mine = this.getAncestors(true).reverse();
-      let theirs = node.getAncestors(true).reverse();
-      let mrca = -1;
-      while (mine.length > mrca && theirs.length > mrca && mine[mrca+1] == theirs[mrca+1]){
-        mrca ++;
-      }
-      return mrca >= 0 ? mine[mrca] : null;
-    }
-  }
-
   sortChildren(sortFunction) {
     return this.state.children.sort(sortFunction);
   }
 
-  /**
-  requires full tree traversal. NOT FILTERED.
-   */
+  //descending
+  getChildren(unfiltered = false) {
+    return this.state.children.filter(c => unfiltered || (c.isIncluded()));
+  }
+
   getDescendents(unfiltered = false) {
     let collector = [];
     let self = this;
@@ -162,6 +128,26 @@ class MkTreeNode {
     }, unfiltered);
     return collector;
   }
+  
+  getMaxDepth(unfiltered = false) {
+    let children = this.getChildren(unfiltered)
+    if (children.length == 0) {
+      return 0;
+    } else {
+      return 1 + children.map(n => n.getMaxDepth(unfiltered)).reduce(( max, cur ) => Math.max( max, cur ), 0);
+    }
+  }
+
+  dft(func, unfiltered = false, ref = null) {
+    if (unfiltered || this.isIncluded()) {
+      let shouldContinue = func.call(ref, this);
+      if (shouldContinue !== false) {
+        this.getChildren(unfiltered).forEach(c => {
+          c.dft(func, unfiltered, ref);
+        });
+      }
+    }
+  }
 
   getFirst(predicate, includeSelf = true) {
     let value = (includeSelf && predicate.call(this, this)) ? this : null;
@@ -177,6 +163,12 @@ class MkTreeNode {
     return value;
   }
 
+  //at level
+  getLevelNodes(root = this.getRoot(), unfiltered = false) {
+    return root.getDescendentsAtLevel(this.getRootDistance(), unfiltered);
+  }
+
+  //ascending
   getParent(root = this.getRoot()) {
     return this.isRoot(root) ? null : this.state.parent;
   }
@@ -187,6 +179,10 @@ class MkTreeNode {
 
   getRoot() {
     return this.state.parent === null ? this : this.state.parent.getRoot();
+  }
+
+  getRootDistance(root = this.getRoot()) {
+    return this === root ? 0 : 1 + this.getParent().getRootDistance(root);
   }
 
   getAncestors(includeSelf = false) {
@@ -201,16 +197,68 @@ class MkTreeNode {
     }
   }
 
-  dft(func, unfiltered = false, ref = null) {
-    //call function, update args based on function call return value
-    if (unfiltered || this.isIncluded()) {
-      let shouldContinue = func.call(ref, this);
-      if (shouldContinue !== false) {
-        this.getChildren(unfiltered).forEach(c => {
-          c.dft(func, unfiltered, ref);
-        });
+  getMrca(node) {
+    if (node == null) {
+      return this;
+    } else {
+      let mine = this.getAncestors(true).reverse();
+      let theirs = node.getAncestors(true).reverse();
+      let mrca = -1;
+      //work from root to node;
+      while (mine.length > mrca && theirs.length > mrca && mine[mrca+1] == theirs[mrca+1]){
+        mrca ++;
       }
+      return mrca >= 0 ? mine[mrca] : null;
     }
+  }
+}
+
+class MkGraph {
+  constructor(props = {}) {
+    this.state = Object.assign({}, {
+      nodes: props.nodes || {},
+      attributes: props.attributes || {},
+      filters: props.filters || []
+    })
+  }
+
+  setFilters(filters) {
+    this.state.filters = filters;
+  }
+
+  setAttribute(key, value){
+    this.state.attributes[key] = value;
+  }
+
+  addNode(node) {
+    this.state.nodes[node.getId()] = node;
+  }
+  
+  getNodes() {
+    return this.state.nodes;
+  }
+
+  getNode(nodeId) {
+    return this.state.nodes[nodeId];
+  }
+
+  getFilters() {
+    return this.state.filters;
+  }
+}
+
+class MkTree extends MkGraph {
+  constructor(props = {}) {
+    super(props);
+    this.state = Object.assign(this.state, {
+      root: props.root || null
+    });
+  }
+
+  getRoot() {
+    let node; 
+    for (node in this.getNodes()) break;
+    return this.getNode(node).getRoot();
   }
 }
 
@@ -219,56 +267,37 @@ const MIN_RADIUS_CENTER_TEXT = 0;
 const MIN_RADIUS_LABEL = 6;
 
 class MkGraphView {
-  
-}
-
-//static function providing color
-MkGraphView.colorNodeByAttribute = function(colorAttribute, colors, defaultColor = '#000') {
-  return function(d) {
-    let attributes = d.node.getAttributes();
-    if (colorAttribute in attributes && attributes[colorAttribute].toLowerCase() in colors) {
-        return colors[attributes[colorAttribute].toLowerCase()];
-    } else {
-        return defaultColor;
-    }
-  }
-}
-
-class MkTreeView extends MkGraphView {
-
   constructor(props) {
-    super(props);
     this.state = {
-      //forest: props.forest,
-      root: props.root,
+      graph: props.graph,
+      title: props.title || 'Graph',
       colorFunction: props.colorFunction || function(d) {
         return '#999';
       },
       label: props.label || function(d) {
-        return d.node.state.id;
+        return d.node.getId();
       },
       tooltip: props.tooltip || function(node) {
-        return node.state.id;
+        return node.getId();
       },
       infoBox: props.infoBox || function(node) {
         return InfoBox.of(node);
       },
-      title: props.title || 'Tree',
-      filters: props.filters || {},
-      filtersOn: props.filtersOn || [],
       searchFields: props.searchFields || null,
       search: props.search || null,
       searchSort: props.searchSort || null,
       focusNodes: props.focusNodes || [],
       infoBoxNode: props.infoBoxNode || [],
-      childString: props.childString || 'children',
+      filters: props.filters || {},
+      filtersOn: props.filtersOn || [],
+      parentDomElement: props.parentDomElement || document.body
     }
     this.state.filters['focus'] = function(node) {
       return view.state.focusNodes.length == 0 || view.state.focusNodes.includes(node);
     };
 
     let view = this;
-    this.svg = d3.select("body").append("svg")
+    this.svg = d3.select(this.state.parentDomElement).append("svg")
       .attr("id", 'graph_svg')
       .on('click', function(){
         view.setState({
@@ -276,7 +305,7 @@ class MkTreeView extends MkGraphView {
         })
       })
     this.state.dimensions = this.getDimensions();
-    this.svg.on('mouseover', d=>{view.hover()});
+    d3.select("body").on('mouseover', d=>view.hover());
     this.container = this.svg.append('g');
 
     this.sideBar = d3.select("body").append("div")
@@ -312,13 +341,68 @@ class MkTreeView extends MkGraphView {
 
     this.updateDimensions = this.updateDimensions.bind(this);
     this.updateFocus = this.updateFocus.bind(this);
+    this.isVisibleInGraphState = this.isVisibleInGraphState.bind(this);
     this.render = this.render.bind(this);
     this.isEqual = this.isEqual.bind(this);
     this.search = this.search.bind(this);
     this.hover = this.hover.bind(this);
-
+    this.hoverDelegate = this.hoverDelegate.bind(this);
+    this.click = this.click.bind(this);
+    this.dblclick = this.dblclick.bind(this);
   }
 
+  updateDimensions() {
+    let oldDim = this.state.dimensions;
+    let newDim = this.getDimensions();
+
+    if (Object.keys(oldDim).some(key=>(oldDim[key] != newDim[key]))) {
+      this.setState({
+        dimensions: newDim
+      });
+    }
+  }
+
+  getDimensions() {
+    return {
+      width: window.innerWidth,
+      graphWidth: window.innerWidth * 0.66,
+      height: window.innerHeight -
+        (document.getElementById('graph_svg').getBoundingClientRect().top -
+          document.body.getBoundingClientRect().top)
+    }
+  }
+
+  getGraph() {
+    return this.state.graph;
+  }
+
+
+  /**
+   * test states
+    rootId=EMTGJNA&filtersOn=humans //spread for huge number of child nodes
+    rootId=TDEVY67&filtersOn=humans //crowd childless nodes and center on parent node
+   */
+  setState(newState) {
+    let changed = [];
+    for (let key in newState) {
+      if (!(key in this.state)) {
+        console.error('non-existant key', key, this.state, newState);
+      } else if (! this.isEqual(this.state[key], newState[key])) {
+        changed.push(key);
+        this.state[key] = newState[key];
+      }
+    }
+    if (changed.length > 0) {
+      let queryState=this.getQueryState();
+      let queryString = Object.keys(queryState)
+        .filter(key=>(queryState[key] != null && queryState[key].length != 0))
+        .map(key=>(encodeURIComponent(key) + '=' + encodeURIComponent(queryState[key]))).join('&');
+      debug('setState', queryString);
+      this.render(changed);
+    }
+  }
+
+  //TODO move this to a utility object
   isEqual(a, b, checked = []) {
     if (checked.some(pair=>((pair[0] === a && pair[1] === b) || (pair[0] === b && pair[1] === a)))) {
       return true;
@@ -343,74 +427,6 @@ class MkTreeView extends MkGraphView {
     }
   }
 
-  /**
-   * test states
-    rootId=EMTGJNA&filtersOn=humans //spread for huge number of child nodes
-    rootId=TDEVY67&filtersOn=humans //crowd childless nodes and center on parent node
-   */
-  setState(newState) {
-    let changed = [];
-    for (let key in newState) {
-      if (!(key in this.state)) {
-        console.error('non-existant key', key, this.state, newState);
-      } else if (! this.isEqual(this.state[key], newState[key])) {
-        changed.push(key);
-        this.state[key] = newState[key];
-      }
-    }
-    if (changed.length > 0) {
-      let queryState={
-        rootId: this.state.root.getId(),
-        filtersOn: this.state.filtersOn.join(','),
-        search: this.state.search,
-        focusNodeIds: this.state.focusNodes.map(node=>node.getId()).join(',')
-      }
-      let queryString = Object.keys(queryState)
-        .filter(key=>(queryState[key] != null && queryState[key].length != 0))
-        .map(key=>(encodeURIComponent(key) + '=' + encodeURIComponent(queryState[key]))).join('&');
-      debug('setState', queryString);
-      this.render(changed);
-    } else {
-      debug('setState', 'no change', newState, this.state);
-    }
-  }
-
-  addFilter(name) {
-    if (!this.state.filtersOn.includes(name)) {
-      this.state.filtersOn.push(name);
-      this.render(['filtersOn']);
-    }
-  }
-
-  //convenience method.
-  removeFilter(name) {
-    if (this.state.filtersOn.includes(name)) {
-      this.state.filtersOn.splice(this.state.filtersOn.indexOf(name), 1);
-      this.render(['filtersOn']);
-    }
-  }
-
-  updateDimensions() {
-    let oldDim = this.state.dimensions;
-    let newDim = this.getDimensions();
-
-    if (Object.keys(oldDim).some(key=>(oldDim[key] != newDim[key]))) {
-      this.setState({
-        dimensions: newDim
-      });
-    }
-  }
-
-  getDimensions() {
-    return {
-      width: window.innerWidth,
-      graphWidth: window.innerWidth * 0.66,
-      height: window.innerHeight -
-        (document.getElementById('graph_svg').getBoundingClientRect().top -
-          document.body.getBoundingClientRect().top)
-    }
-  }
-
   search(criteriaString) {
     debug('search starting');
     //get separate terms in lowercase
@@ -424,7 +440,7 @@ class MkTreeView extends MkGraphView {
 
     let searchFields = this.state.searchFields;
     let nodes = [];
-    this.state.root.getRoot().dft(function(node){
+    Object.values(this.getGraph().getNodes()).forEach(function(node){
       // search
       for (let key in node.getAttributes()) {
         if ((searchFields == null || searchFields.includes(key))
@@ -445,6 +461,276 @@ class MkTreeView extends MkGraphView {
       focusNodes: nodes
     })
   }
+  
+  shouldRedraw(stateChanged) {
+    const GRAPH_AFFECTING_STATE = ["colorFunction", "label", "filters", "filtersOn", "dimensions"];
+    return !stateChanged || stateChanged.some(key=>GRAPH_AFFECTING_STATE.includes(key));
+  }
+
+  isVisibleInGraphState(node) {
+    return true; //TODO
+  }
+
+  //called by draw
+  updateFocus(shouldRedraw = true) {
+    debug('start infoBox');
+    let view = this;
+    let root = this.state.root;
+
+    let focusNodesVisible = [];
+    let excludingFilters = {};
+    view.state.focusNodes.forEach(node => {
+      if (!node.isIncluded()) {
+        node.getExcludingFilters().forEach(filterName => {
+          excludingFilters[filterName] = true;
+        })
+      } else if (view.isVisibleInGraphState(node)) {
+        //node is on screen, but might be in a group node
+        shouldRedraw = shouldRedraw || (view.container.selectAll('rect#' + node.getId()).size() == 0);
+        focusNodesVisible.push(node);
+      } else {
+        //node is off screen
+      }
+    });
+    excludingFilters = Object.keys(excludingFilters);
+    let focusNodesNotVisible = this.state.focusNodes.filter(node=>!focusNodesVisible.includes(node));
+
+    let labelClass = 'label';
+    let info;
+    if (this.state.focusNodes.length > 1) {
+      //more than one focus node
+      labelClass = 'label_narrow';
+      info = new InfoBox({
+        title: "found " + this.state.focusNodes.length + ' results' + (focusNodesNotVisible.length > 0 ? ' (showing ' + focusNodesVisible.length + ')':'')
+      });
+      let orderedNodes = focusNodesVisible.concat(focusNodesNotVisible); //
+      orderedNodes.forEach((node, i) => {
+        let ib = this.state.infoBox(node);
+        let key = (i < focusNodesVisible.length) ? i+1 : ('x ' + (i - focusNodesVisible.length + 1));
+        info.addEntry(key + ':', ib.state.title, node);
+        info.addEntry(key + '.', Object.keys(ib.state.entries).filter(k=>(ib.state.limitedKeys === null || ib.state.limitedKeys.includes(k))).map(k=>ib.state.entries[k]).join('; '));
+      });
+    } else if (this.state.focusNodes.length == 1) {
+      //one focus node
+      info = this.state.infoBox(this.state.focusNodes[0]);
+      if (Object.keys(info.getEntries()).length == 0) {
+        info.addEntry('attributes', '(empty)');
+      };
+    } else {
+      //no focus node
+      info = new InfoBox({
+        title: this.state.title,
+      });
+      //TODO consider possibility that this is a failed search
+      //todo fix this for case that 'focus' filter is on
+      this.appendGraphData(info);
+      Object.keys(view.state.filters).forEach((filterName, index)=>{
+        let filterKey = 'filter (' + index + ')';
+        if (!view.state.filtersOn.includes(filterName)) {
+          info.addEntry(filterKey, filterName, function(){
+            view.addFilter(filterName);
+          });
+        } else {
+          info.addEntry(filterKey, filterName + ' (remove)', function(){
+            view.removeFilter(filterName);
+          });
+        }
+      })
+
+    }
+
+    //Set Title
+    var title = this.titleBox.selectAll("h2#info_box_title").data([info.state.title]).text(d=>d);
+
+    //Set filters
+    let plural = view.state.focusNodes.length > 1;
+
+    let options = [];
+    if (focusNodesNotVisible.length > 0) {
+      options.push([plural ? 'expand graph to all search results' : 'move to search result', function(){
+        let newState = view.getStateToUnhideNodes(focusNodesNotVisible)
+        newState.filtersOn = view.state.filtersOn.filter(filterName=>!excludingFilters.includes(filterName));
+        view.setState(newState);
+      }]);
+    }
+    if (view.state.filtersOn.includes('focus')) {
+      options.push(['don\'t limit to search results', function(){
+        view.removeFilter('focus');
+      }]);
+    } else if (plural) {
+      options.push(['only show search results', function(){
+        view.addFilter('focus');
+        d3.event.preventDefault();
+      }]);
+    }
+    var link = this.titleBox.selectAll("a.info_box_filter").data(options);
+    link.exit().remove();
+    link.enter().append('a')
+      .attr('class', 'info_box_filter')
+      .attr('href', '#')
+    .merge(link)
+      .text(d=>d[0])
+      .on('click', d=>{
+        d3.event.stopPropagation();
+        d[1]();
+      });
+    //var filterLink = this.sideBar.select("a#info_box_title").data([info.state.title]);
+
+    let d3entries = this.infoBox.selectAll("tr").data(Object.keys(info.getEntries()));
+
+    d3entries.exit().remove();
+
+    let rows = d3entries.enter().append("tr")
+      .attr("class", 'datum')
+    .merge(d3entries)
+
+    d3entries = rows.selectAll('td')
+      .data(function (row) {
+        let link = info.state.links[row];
+        if (link) {
+          return [[row, labelClass], [info.getEntries()[row], 'link', link]]
+        } else {
+          return [[row, labelClass], [info.getEntries()[row]]]
+        }
+      })
+    d3entries
+      .enter()
+          .append('td')
+      .merge(d3entries)
+          .html(d => d[0])
+          .attr('class', d=>(d.length > 1 ? d[1] : null))
+          .on('click', d=>{
+            d3.event.stopPropagation();
+            if (d.length > 2) {
+              let link = d[2];
+              if (Array.isArray(link)) {
+                view.click(link);
+              } else if (typeof link == 'function') {
+                link.call(view);
+              } else {
+                view.dblclick(link);
+              }
+            }
+          })
+          .on('dblclick', d=>{
+            d3.event.stopPropagation();
+            if (d.length > 2) {
+              let link = d[2];
+              if (Array.isArray(link)) {
+                //do nothing
+              } else if (typeof link == 'function') {
+                //do nothing
+              } else {
+                //TODO we switch double clicking behavior on links. that's bad right?
+                view.click([link]);
+              }
+            }
+          })
+    //TODO call class of nodes instead of 'rect' so I can change
+    this.container.selectAll("rect")
+      .classed('focus', d=> (view.state.focusNodes.includes(d.node)));
+
+    debug('end infoBox')
+    return shouldRedraw;
+  }
+  appendGraphData(info) {
+    //TODO
+  }
+  getStateToUnhideNodes(nodesToUnhide) {
+    return {};
+  }
+
+  //TODO clean this up -- obviously just a test
+  getNodePositions() {
+    let view = this;
+    let edges = [];
+    let nodes = [];
+    let dimensions = this.state.dimensions;
+
+    let margins = {
+      l: 24,
+      r: 24,
+      t: 24,
+      b: 24
+    };
+    
+    let ancestorRadius = 20;
+    let width = dimensions.graphWidth - margins.l - margins.r;
+    let x = margins.l + ancestorRadius;
+    let y = margins.t + ancestorRadius;
+    let last = null;
+
+    Object.values(this.getGraph().getNodes()).filter(node=>node.isIncludedSelf()).forEach((node, i) => {
+      if (y < dimensions.height - margins.t) {
+        let n = {
+          node: node,
+          label: true,
+          labelSize: 10,
+          angle: 0,
+          r: ancestorRadius,
+          x: x,
+          y: y // use bottom margin, since these are the nodes along the top
+        }
+        nodes.push(n)
+        if (last !== null) {
+          edges.push([last, n])
+        }
+        last = n;
+        if (x > width - ancestorRadius) {
+          x = margins.l + ancestorRadius;
+          y += ancestorRadius * 2.5;
+        } else {
+          x += ancestorRadius * 2.5;
+        }
+      }
+    })
+    debug('end compute graph');
+    return {
+      nodeViews: nodes,
+      edgeViews: edges
+    }
+  }
+  hover(node, prefix = null, suffix = null) {
+    d3.event.stopPropagation();
+    if (node) {
+      let string = node instanceof MkNode ? this.state.tooltip(node) : node;
+      this.tooltip
+        .style('display', 'inline-block')
+        .text((prefix ? prefix : '') + 
+            string + 
+            (suffix ? suffix : ''));
+    } else {
+      this.tooltip
+        .style('display', 'none')
+        .text('');
+    }
+  }
+
+  hoverDelegate(delegate) {
+    //TODO consider what clustered nodes mean in a non-tree graph
+    this.hover(delegate, 'cluster containing ');
+  }
+  
+  click(nodes, prefix = null, suffix = null) {
+    d3.event.stopPropagation();
+    this.setState({
+      focusNodes: nodes,
+      search: null
+    })
+  }
+
+  dblclick(node, prefix = null, suffix = null) {
+    d3.event.stopPropagation();
+    //todo what should happen on dblclick in a graph?
+  }
+
+  getQueryState() {
+    return {
+      filtersOn: this.state.filtersOn.join(','),
+      search: this.state.search,
+      focusNodeIds: this.state.focusNodes.map(node=>node.getId()).join(',')
+    }
+  }
 
   //called by setState. also should be called when setState is not called but graph should be rerendered.
   render(changed) {
@@ -463,194 +749,47 @@ class MkTreeView extends MkGraphView {
     let activeFilters = {};
     this.state.filtersOn.forEach(filterName=> {
       activeFilters[filterName] = this.state.filters[filterName];
+      console.log('activeFilters', activeFilters);
     })
-    this.state.root.getRoot().setFilters(activeFilters);
+    this.getGraph().setFilters(activeFilters);
 
-    const GRAPH_AFFECTING_STATE = ["root", "colorFunction", "label", "filters", "filtersOn", "childString", "dimensions"];
-    let redraw = !changed || changed.some(key=>GRAPH_AFFECTING_STATE.includes(key));
-    this.updateFocus(redraw);
+    let shouldRedraw = this.shouldRedraw(changed);
+    shouldRedraw = this.updateFocus(shouldRedraw);
+
     //todo remove loading spinner
-  }
-
-  levelPath(dimensions, margins, level, levelNodes, maxLevel, levelLength = null, nodes = null) {
-    let root = this.state.root;
-    levelLength = levelLength == null ? levelNodes.length : levelLength
-    let w = dimensions.graphWidth - margins.l - margins.r;
-    let h = dimensions.height - margins.t - margins.b;
-    let fracFunc = level => ((1 - 3/(level + 3)));
-    let frac = fracFunc(level);
-    let maxFrac = maxLevel == 0 ? 1 : fracFunc(maxLevel);
-
-    //linear
-    let m = h/(w * 1.0);
-    let b = h * frac/maxFrac;
-    let bLast = h * (level == 0 ? 0 : fracFunc(level - 1))/maxFrac;
-    let bNext = h * fracFunc(level + 1)/maxFrac;
-    let theta = Math.atan(m);
-    let perpendicularParentOffset = (b - bLast) * Math.cos(theta) * Math.sin(theta);
-    let perpendicularChildOffset = (bNext - b) * Math.cos(theta) * Math.sin(theta);
-    let xLineEnd = w * frac/maxFrac;
-    let length = xLineEnd / Math.cos(theta);
-
-    let extraOffsetByNode = {};
-    let offset = 0;
-    let nodeSpacing = (xLineEnd * 1.0)/levelLength
-    levelNodes.forEach((node, index)=>{
-      let p = node.getParent(root) != null ? nodes[node.getParent(root).state.id] : null;
-      if (p != null) {
-        let siblings = p.node.getChildren();
-        let childIndex = siblings.indexOf(node);
-        let maxOffset = xLineEnd - (levelNodes.length - index) * nodeSpacing - index * nodeSpacing;
-        let bestOffset = (p.x - margins.l + perpendicularParentOffset) - (index + siblings.length * 0.5 - childIndex) * nodeSpacing;
-        if (bestOffset > offset) {
-          if (maxOffset >= bestOffset) {
-            offset = bestOffset;
-          } else {
-            offset = maxOffset;
-          }
-        }
-      }
-      extraOffsetByNode[index] = offset;
-    })
-    let radius = MAX_RADIUS / (level + 1);
-    let generousRadius = Math.min(perpendicularChildOffset, nodeSpacing)/2;
-    if (radius < generousRadius) {
-      radius = Math.min(MAX_RADIUS, generousRadius);
-    }
-
-    //TODO optimize view for sparce view: radius based on density;
-    //search: Gadiyaram, Hariprasad [contractor] <hgadiyaram_contractor@mtb.com>; Selvaraj, Eujish [contractor] <eselvaraj_contractor@mtb.com>; Mangla, Shashank [contractor] <smangla_contractor@mtb.com>; Black, Brian <bblack@mtb.com>; Sharma, Anoop  [contractor] <asharma10_contractor@mtb.com>; Tomar, Vivek [contractor] <vtomar_contractor@mtb.com>; Foremiak, Lynn <lforemiak@mtb.com>; Aguilera, Ivan <iaguilera@mtb.com>; Narayana, Lakshmi [contractor] <lnarayana_contractor@mtb.com>; Manjunatha, Sandeep [contractor] <smanjunatha_contractor@mtb.com>; Duvvuru, Avinash  [contractor] <aduvvuru2_contractor@mtb.com>
-    //debug('level info', level, [levelLength, levelNodes.length], xLineEnd, radius);
-    //TODO make this return type a LevelView class, and make a NodeView class;
-    return {
-      length: length,
-      position: function(node, boss) {
-        const LABEL_SIZE_FACTOR = 2;
-        const LABEL_SIZE_DEFAULT = 10;
-        let index = levelNodes.indexOf(node);
-        let x = (index + 0.5) * nodeSpacing + (index in extraOffsetByNode ? extraOffsetByNode[index] : 0);
-
-        if (isNaN(x)) {
-          console.error('something went wrong', level, levelLength, maxLevel, xLineEnd, maxFrac);
-        }
-        let labelSize = (radius * LABEL_SIZE_FACTOR > LABEL_SIZE_DEFAULT)
-          ? LABEL_SIZE_DEFAULT + 'px'
-          : radius*LABEL_SIZE_FACTOR + 'px';
-        return {
-          node: node,
-          label: radius > MIN_RADIUS_LABEL || ((length / (radius * levelLength)) > 3 && radius > 3),
-          labelSize: labelSize,
-          r: radius,
-          x: margins.l + x + radius,
-          y: margins.t - m * x + b + radius,
-          angle: Math.atan(1/m)*180/Math.PI
-        }
-      }
+    if (shouldRedraw) {
+      let view = this;
+      setTimeout(()=>{
+        view.drawGraphElements();
+      }, 10);
     }
   }
 
-  hover(node, prefix = null, suffix = null) {
-    d3.event.stopPropagation();
-    if (node) {
-      this.tooltip
-        .style('display', 'inline-block')
-        .text((prefix ? prefix : '') + this.state.tooltip(node) + (suffix ? suffix : ''));
-    } else {
-      this.tooltip
-        .style('display', 'none')
-        .text('');
+  addFilter(name) {
+    if (!this.state.filtersOn.includes(name)) {
+      this.state.filtersOn.push(name);
+      this.render(['filtersOn']);
     }
   }
 
-  //called by updateFocus if it's determined that nodes/edges should be redrawn
-  drawEdgesAndNodes() {
-    debug('start draw graph');
+  //convenience method.
+  removeFilter(name) {
+    if (this.state.filtersOn.includes(name)) {
+      this.state.filtersOn.splice(this.state.filtersOn.indexOf(name), 1);
+      this.render(['filtersOn']);
+    }
+  }
+
+  drawGraphElements() {
     let view = this;
-    let edges = [];
-    let nodes = {};
-    let dimensions = this.state.dimensions;
-    let root = this.state.root;
-    let ancestors = root.getAncestors()
-    let maxDepth = root.getMaxDepth() + root.getRootDistance();
-
-    let margins = {
-      l: 24,
-      r: 24,
-      t: ancestors.length == 0 ? 24 : 54,
-      b: 24
-    };
-
-    let child = root;
-    let maxLevelLength = 0;
-    while (child) {
-      //unfilter at root level
-      let levelNodes = child.getLevelNodes(root, child === root);
-      maxLevelLength = levelNodes.length > maxLevelLength ? levelNodes.length : maxLevelLength;
-      let level = child.getRootDistance(root);
-      child = null;
-      //TODO replace totalbreadth mechanism with one that considers consecutive node spacing
-      let totalbreadth = 0;
-      let shouldGroup = false;
-      let levelPath = this.levelPath(dimensions, margins, level, levelNodes, maxDepth, maxLevelLength, nodes);
-      let lastX = 0;
-      levelNodes.forEach(function(node){
-        let nodeView = levelPath.position(node, node.getParent(root) != null ? nodes[node.getParent(root).state.id] : null);
-        nodes[node.state.id] = nodeView;
-        if (!node.isRoot(root) && node.getParent(root).state.id in nodes) {
-          edges.push([nodes[node.getParent(root).state.id], nodeView]);
-          if (nodeView.x - lastX < nodeView.r) {
-            shouldGroup = true;
-          }
-        }
-        if (!child && node.getChildren().length > 0) {
-          child = node.getChildren()[0];
-        }
-        lastX = nodeView.x;
-      });
-      //TODO handle case where level 1 does not have enough spread (there's no way to see all those nodes ever)
-      if (shouldGroup && level > 1) {
-        let lastParent;
-        let lastColor;
-        let lastNonHidden;
-        levelNodes.forEach(function(node){
-          if (lastParent && lastColor && lastParent == node.getParent() && lastColor == view.state.colorFunction({node: node})) {
-            nodes[node.state.id]['isHidden'] = true;
-            lastNonHidden.span = nodes[node.state.id];
-          } else {
-            lastParent = node.getParent();
-            lastColor = view.state.colorFunction({node: node});
-            lastNonHidden = nodes[node.state.id];
-          }
-        });
-      }
-      //debug('level summary', levelNodes.length, levelNodes.filter(n=>(n.getChildren().length > 0)).length);
-    }
-    debug('end traversal');
-
-    let last = nodes[root.state.id];
-    last.isAncestor = true;
-
-    nodes = Object.values(nodes);
-    let ancestorRadius = 20;
-    ancestors.forEach((node, i) => {
-      let n = {
-        node: node,
-        label: true,
-        labelSize: 10,
-        angle: 0,
-        r: ancestorRadius,
-        isAncestor: true,
-        x: i*2.5*ancestorRadius + margins.l + ancestorRadius,
-        y: margins.b // use bottom margin, since these are the nodes along the top
-      }
-      nodes.push(n)
-      edges.push([n, last])
-      last = n;
-    })
+    let nodePositions = view.getNodePositions()
+    let nodes = nodePositions.nodeViews;
+    let edges = nodePositions.edgeViews;
 
     const CLASSES = {
         line: 'edge'
       };
+    //TODO get rid of isAncestor -- doesn't make sense outside the context of a tree
     var line = d3.line()
       .x((d,index)=>{
         return d.x + (d.isAncestor ? 0 : (index == 0 ? 1 : -1)) * (d.r - 1);
@@ -664,7 +803,7 @@ class MkTreeView extends MkGraphView {
       .data(edges.filter(edge => {
         return !(edge[1].isHidden) && !('span' in edge[1]);
       }), d => {
-        return `${d[0].node.state.id},${d[1].node.state.id}`;
+        return `${d[0].node.getId()},${d[1].node.getId()}`;
       });
 
     edge.exit().remove();
@@ -692,15 +831,10 @@ class MkTreeView extends MkGraphView {
       .data(edges.filter(d => {
         return 'span' in d[1];
       }), d => {
-        return `${d[0].node.state.id},${d[1].node.state.id}`;
+        return `${d[0].node.getId()},${d[1].node.getId()}`;
       });
 
     groupEdges.exit().remove();
-
-    let groupMouseover = function(parent) {
-      let childCount = parent.getChildren(true).length;
-      view.hover(parent, view.state.childString + ' of ', ' (' + childCount + ')');
-    };
 
     groupEdges.enter().append("polygon")
       .attr("class", 'group_edge')
@@ -709,18 +843,9 @@ class MkTreeView extends MkGraphView {
         return view.state.colorFunction(d[1]);
       })
       .style('opacity',0)
-      .on('mouseover', d=>groupMouseover(d[0].node))
-      .on('click', function(d) {
-        view.setState({
-          focusNodes: [d[0].node]
-        })
-        d3.event.stopPropagation();
-      })
-      .on('dblclick', function(d) {
-        view.setState({
-          root: d[0].node
-        })
-      })
+      .on('mouseover', d=> view.hoverDelegate(d[0].node))
+      .on('click', d => view.click([d[0].node]))
+      .on('dblclick', d => view.dblclick(d[0].node))
       .transition(t)
           .delay(500)
         .style('opacity', d => d[0].node.isIncludedSelf() ? 0.5 : 0.1)
@@ -743,7 +868,7 @@ class MkTreeView extends MkGraphView {
     var groupNodes = this.container.selectAll("polygon.group_node")
       .data(nodes.filter(d => {
         return 'span' in d;
-      }), d => d.node.state.id);
+      }), d => d.node.getId());
 
     groupNodes.exit().remove();
 
@@ -752,21 +877,12 @@ class MkTreeView extends MkGraphView {
       .classed('clickable', true)
       .style('fill', view.state.colorFunction)
       .style('opacity',0)
-      .on('mouseover', d=>groupMouseover(d.node.getParent()))
-      .on('click', function(d) {
-        d3.event.stopPropagation();
-        view.setState({
-          focusNodes: [d.node.getParent()]
-        })
-      })
-      .on('dblclick', function(d) {
-        view.setState({
-          root: d.node.getParent()
-        })
-      })
+      .on('mouseover', d=>view.hoverDelegate(d.delegate))
+      .on('click', d => view.click([d.delegate]))
+      .on('dblclick', d => view.dblclick(d.delegate))
       .transition(t)
           .delay(500)
-        .style('opacity', d => d.node.getParent().isIncludedSelf() ? 1 : 0.2)
+        .style('opacity', d => d.delegate.isIncludedSelf() ? 1 : 0.2)
           .selection()
     .merge(groupNodes)
       .transition(t)
@@ -789,59 +905,48 @@ class MkTreeView extends MkGraphView {
     //https://en.wikipedia.org/wiki/Organizational_structure_of_the_United_States_Department_of_Defense
     var circle = this.container.selectAll("rect")
       .data(nodes.filter(node => {
-        return (!node.isHidden && !('span' in node)) || view.state.focusNodes.includes(node.node);
-      }), d => d.node.state.id);
+        return (!node.isHidden && !('span' in node)) || node.hasFocus;
+      }), d => d.node.getId());
 
     circle.exit().remove();
     circle
-      .classed('focus', d=>(view.state.focusNodes.includes(d.node)))
+      .classed('focus', d=>d.hasFocus)
       .transition(t)
           .attr("x", function(d) {
-            return d.x - d.r - (view.state.focusNodes.includes(d.node) ? 1 : 0);
+            return d.x - d.r - (d.hasFocus ? 1 : 0);
           })
           .attr("y", function(d) {
-            return d.y - d.r - (view.state.focusNodes.includes(d.node) ? 1 : 0);
+            return d.y - d.r - (d.hasFocus ? 1 : 0);
           })
           .attr("width", function(d){
-            return d.r * 2 + (view.state.focusNodes.includes(d.node) ? 2 : 0);
+            return d.r * 2 + (d.hasFocus ? 2 : 0);
           })
           .attr("height", function(d){
-            return d.r * 2 + (view.state.focusNodes.includes(d.node) ? 2 : 0);
+            return d.r * 2 + (d.hasFocus ? 2 : 0);
           })
-          .style('opacity', d => d.node.isIncludedSelf() || view.state.focusNodes.includes(d.node) ? 1 : 0.2)
+          .style('opacity', d => d.node.isIncludedSelf() || d.hasFocus ? 1 : 0.2)
           .style('fill', view.state.colorFunction)
       .selection().raise();
 
     circle.enter().append("rect")
       .classed('node', true)
       .classed('clickable', true)
-      .classed('focus', d=>(view.state.focusNodes.includes(d.node)))
-      .on('mouseover', function(d) {
-        view.hover(d.node);
-      })
-      .on('click', function(d) {
-        d3.event.stopPropagation();
-        view.setState({
-          focusNodes: [d.node]
-        })
-      })
-      .on('dblclick', function(d) {
-        view.setState({
-          root: d.node
-        })
-      })
-      .attr('id', d => d.node.state.id)
+      .classed('focus', d=>d.hasFocus)
+      .on('mouseover', d=> view.hover(d.node))
+      .on('click', d => view.click([d.node]))
+      .on('dblclick', d => view.dblclick(d.node))
+      .attr('id', d => d.node.getId())
       .attr("x", function(d) {
-        return d.x - d.r - (view.state.focusNodes.includes(d.node) ? 1 : 0);
+        return d.x - d.r - (d.hasFocus ? 1 : 0);
       })
       .attr("y", function(d) {
-        return d.y - d.r - (view.state.focusNodes.includes(d.node) ? 1 : 0);
+        return d.y - d.r - (d.hasFocus ? 1 : 0);
       })
       .attr("width", function(d){
-        return d.r * 2 + (view.state.focusNodes.includes(d.node) ? 2 : 0);
+        return d.r * 2 + (d.hasFocus ? 2 : 0);
       })
       .attr("height", function(d){
-        return d.r * 2 + (view.state.focusNodes.includes(d.node) ? 2 : 0);
+        return d.r * 2 + (d.hasFocus ? 2 : 0);
       })
       .style('fill', view.state.colorFunction)
       .style('opacity',0)
@@ -854,27 +959,16 @@ class MkTreeView extends MkGraphView {
     var nodelabels = this.container.selectAll("text")
       .data(nodes.filter(d => {
         return d.label;
-      }), d => d.node.state.id);
+      }), d => d.node.getId());
 
     nodelabels.exit().remove();
 
     nodelabels.enter().append("text")
       .attr("class", 'nodelabel')
       .classed('clickable', true)
-      .on('mouseover', function(d) {
-        view.hover(d.node);
-      })
-      .on('click', function(d) {
-        d3.event.stopPropagation();
-        view.setState({
-          focusNodes: [d.node]
-        })
-      })
-      .on('dblclick', function(d) {
-        view.setState({
-          root: d.node
-        })
-      })
+      .on('mouseover', d => view.hover(d.node))
+      .on('click', d => view.click([d.node]))
+      .on('dblclick', d => view.dblclick(d.node))
       .text(view.state.label)
       .attr("text-anchor", function(d) {
         return d.r > MIN_RADIUS_CENTER_TEXT ? "middle" : "start";
@@ -931,183 +1025,249 @@ class MkTreeView extends MkGraphView {
 
   }
 
-  //called by draw
-  updateFocus(shouldRedraw = true) {
-    debug('start infoBox');
-    let view = this;
-    let root = this.state.root;
+}
 
-    let focusNodesVisible = [];
-    let excludingFilters = {};
-    view.state.focusNodes.forEach(node => {
-      if (!node.isIncluded()) {
-        node.getExcludingFilters().forEach(filterName => {
-          excludingFilters[filterName] = true;
-        })
-      } else if (!node.getAncestors(true).includes(root)) {
-        //node is off screen
-      } else {
-        //node is on screen, but might be in a group node
-        shouldRedraw = shouldRedraw || (view.container.selectAll('rect#' + node.state.id).size() == 0);
-        focusNodesVisible.push(node);
-      }
-    });
-    excludingFilters = Object.keys(excludingFilters);
-    let focusNodesNotVisible = this.state.focusNodes.filter(node=>!focusNodesVisible.includes(node));
-
-    let labelClass = 'label';
-    let info;
-    if (this.state.focusNodes.length > 1) {
-      //more than one focus node
-      labelClass = 'label_narrow';
-      info = new InfoBox({
-        title: "found " + this.state.focusNodes.length + ' results' + (focusNodesNotVisible.length > 0 ? ' (showing ' + focusNodesVisible.length + ')':'')
-      });
-      let orderedNodes = focusNodesVisible.concat(focusNodesNotVisible); //
-      orderedNodes.forEach((node, i) => {
-        let ib = this.state.infoBox(node);
-        let key = (i < focusNodesVisible.length) ? i+1 : ('x ' + (i - focusNodesVisible.length + 1));
-        info.addEntry(key + ':', ib.state.title, node);
-        info.addEntry(key + '.', Object.keys(ib.state.entries).filter(k=>(ib.state.limitedKeys === null || ib.state.limitedKeys.includes(k))).map(k=>ib.state.entries[k]).join('; '));
-      });
-    } else if (this.state.focusNodes.length == 1) {
-      //one focus node
-      info = this.state.infoBox(this.state.focusNodes[0]);
-      if (Object.keys(info.getEntries()).length == 0) {
-        info.addEntry('attributes', '(empty)');
-      };
+//static function providing color
+MkGraphView.colorNodeByAttribute = function(colorAttribute, colors, defaultColor = '#000') {
+  return function(d) {
+    let attributes = d.node.getAttributes();
+    if (colorAttribute in attributes && attributes[colorAttribute].toLowerCase() in colors) {
+        return colors[attributes[colorAttribute].toLowerCase()];
     } else {
-      //no focus node
-      info = new InfoBox({
-        title: this.state.title,
-      });
-      //TODO consider possibility that this is a failed search
-      //todo fix this for case that 'focus' filter is on
-      info.addEntry('nodes visible', root.getDescendents().length + 1 + root.getRootDistance())
-      let levelCount = root.getMaxDepth() + 1;
-      info.addEntry('levels visible', levelCount)
-      Object.keys(view.state.filters).forEach((filterName, index)=>{
-        let filterKey = 'filter (' + index + ')';
-        if (!view.state.filtersOn.includes(filterName)) {
-          info.addEntry(filterKey, filterName, function(){
-            view.addFilter(filterName);
-          });
-        } else {
-          info.addEntry(filterKey, filterName + ' (remove)', function(){
-            view.removeFilter(filterName);
-          });
-        }
-      })
-
-    }
-
-    //Set Title
-    var title = this.titleBox.selectAll("h2#info_box_title").data([info.state.title]).text(d=>d);
-
-    //Set filters
-    let mrca = this.state.focusNodes.reduce((acc, node)=>node.getMrca(acc), null);
-    let plural = view.state.focusNodes.length > 1;
-
-    let options = [];
-    if (focusNodesNotVisible.length > 0) {
-      options.push([plural ? 'expand graph to all search results' : 'move to search result', function(){
-        let newFilters = view.state.filtersOn.filter(filterName=>!excludingFilters.includes(filterName));
-        view.setState({
-          root: mrca,
-          filtersOn: newFilters
-        });
-      }]);
-    }
-    if (view.state.filtersOn.includes('focus')) {
-      options.push(['don\'t limit to search results', function(){
-        view.removeFilter('focus');
-      }]);
-    } else if (plural) {
-      options.push(['only show search results', function(){
-        view.addFilter('focus');
-        d3.event.preventDefault();
-      }]);
-    }
-    var link = this.titleBox.selectAll("a.info_box_filter").data(options);
-    link.exit().remove();
-    link.enter().append('a')
-      .attr('class', 'info_box_filter')
-      .attr('href', '#')
-    .merge(link)
-      .text(d=>d[0])
-      .on('click', d=>{
-        d3.event.stopPropagation();
-        d[1]();
-      });
-    //var filterLink = this.sideBar.select("a#info_box_title").data([info.state.title]);
-
-    let d3entries = this.infoBox.selectAll("tr").data(Object.keys(info.getEntries()));
-
-    d3entries.exit().remove();
-
-    let rows = d3entries.enter().append("tr")
-      .attr("class", 'datum')
-    .merge(d3entries)
-
-    d3entries = rows.selectAll('td')
-      .data(function (row) {
-        let link = info.state.links[row];
-        if (link) {
-          return [[row, labelClass], [info.getEntries()[row], 'link', link]]
-        } else {
-          return [[row, labelClass], [info.getEntries()[row]]]
-        }
-      })
-    d3entries
-      .enter()
-          .append('td')
-      .merge(d3entries)
-          .html(d => d[0])
-          .attr('class', d=>(d.length > 1 ? d[1] : null))
-          .on('click', d=>{
-            d3.event.stopPropagation();
-            if (d.length > 2) {
-              let link = d[2];
-              if (Array.isArray(link)) {
-                view.setState({
-                  focusNodes: link,
-                  search: null
-                })
-              } else if (typeof link == 'function') {
-                link.call(view);
-              } else {
-                view.setState({
-                  root: link
-                })
-              }
-            }
-          })
-          .on('dblclick', d=>{
-            d3.event.stopPropagation();
-            if (d.length > 2) {
-              let link = d[2];
-              if (Array.isArray(link)) {
-                //do nothing
-              } else if (typeof link == 'function') {
-                //do nothing
-              } else {
-                view.setState({
-                  focusNodes: [link]
-                })
-              }
-            }
-          })
-    //update nodes with focus
-    this.container.selectAll("rect")
-      .classed('focus', d=> (view.state.focusNodes.includes(d.node)));
-
-    debug('end infoBox')
-    if (shouldRedraw) {
-      setTimeout(()=>{
-        view.drawEdgesAndNodes();
-      }, 10);
+        return defaultColor;
     }
   }
+}
+
+class MkTreeView extends MkGraphView {
+
+  constructor(props) {
+    super(props);
+    this.state = Object.assign(this.state, {
+      childString: props.childString || 'children',
+      root: props.root || this.state.graph.getRoot()
+    });
+    let view = this;
+
+    this.render = this.render.bind(this);
+  }
+
+  getQueryState() {
+    return Object.assign(super.getQueryState(), {
+        rootId: this.state.root.getId(),
+    })
+  }
+
+  getStateToUnhideNodes(nodesToUnhide) {
+    return {
+      root: this.state.focusNodes.reduce((acc, node)=>node.getMrca(acc), null)
+    }
+  }
+
+  appendGraphData(info) {
+    //TODO
+    let descendents = root.getDescendents();
+    descendents.unshift(root);
+    info.addEntry('nodes in tree', descendents.length, descendents);
+    let ancestors = root.getAncestors();
+    if (ancestors.length > 0) {
+      info.addEntry('ancestors', ancestors.length, ancestors);
+    }
+    let levelCount = root.getMaxDepth() + 1;
+    info.addEntry('levels visible', levelCount)
+  }
+  
+  shouldRedraw(stateChanged) {
+    const GRAPH_AFFECTING_STATE = ["root", "childString"];
+    return super.shouldRedraw(stateChanged) || stateChanged.some(key=>GRAPH_AFFECTING_STATE.includes(key));
+  }
+
+  levelPath(dimensions, margins, level, levelNodes, maxLevel, levelLength = null, nodes = null) {
+    let view = this;
+    let root = this.state.root;
+    levelLength = levelLength == null ? levelNodes.length : levelLength
+    let w = dimensions.graphWidth - margins.l - margins.r;
+    let h = dimensions.height - margins.t - margins.b;
+    let fracFunc = level => ((1 - 3/(level + 3)));
+    let frac = fracFunc(level);
+    let maxFrac = maxLevel == 0 ? 1 : fracFunc(maxLevel);
+
+    //linear
+    let m = h/(w * 1.0);
+    let b = h * frac/maxFrac;
+    let bLast = h * (level == 0 ? 0 : fracFunc(level - 1))/maxFrac;
+    let bNext = h * fracFunc(level + 1)/maxFrac;
+    let theta = Math.atan(m);
+    let perpendicularParentOffset = (b - bLast) * Math.cos(theta) * Math.sin(theta);
+    let perpendicularChildOffset = (bNext - b) * Math.cos(theta) * Math.sin(theta);
+    let xLineEnd = w * frac/maxFrac;
+    let length = xLineEnd / Math.cos(theta);
+
+    let extraOffsetByNode = {};
+    let offset = 0;
+    let nodeSpacing = (xLineEnd * 1.0)/levelLength
+    levelNodes.forEach((node, index)=>{
+      let p = node.getParent(root) != null ? nodes[node.getParent(root).getId()] : null;
+      if (p != null) {
+        let siblings = p.node.getChildren();
+        let childIndex = siblings.indexOf(node);
+        let maxOffset = xLineEnd - (levelNodes.length - index) * nodeSpacing - index * nodeSpacing;
+        let bestOffset = (p.x - margins.l + perpendicularParentOffset) - (index + siblings.length * 0.5 - childIndex) * nodeSpacing;
+        if (bestOffset > offset) {
+          if (maxOffset >= bestOffset) {
+            offset = bestOffset;
+          } else {
+            offset = maxOffset;
+          }
+        }
+      }
+      extraOffsetByNode[index] = offset;
+    })
+    let radius = MAX_RADIUS / (level + 1);
+    let generousRadius = Math.min(perpendicularChildOffset, nodeSpacing)/2;
+    if (radius < generousRadius) {
+      radius = Math.min(MAX_RADIUS, generousRadius);
+    }
+
+    //TODO optimize view for sparce view: radius based on density;
+    //search: Gadiyaram, Hariprasad [contractor] <hgadiyaram_contractor@mtb.com>; Selvaraj, Eujish [contractor] <eselvaraj_contractor@mtb.com>; Mangla, Shashank [contractor] <smangla_contractor@mtb.com>; Black, Brian <bblack@mtb.com>; Sharma, Anoop  [contractor] <asharma10_contractor@mtb.com>; Tomar, Vivek [contractor] <vtomar_contractor@mtb.com>; Foremiak, Lynn <lforemiak@mtb.com>; Aguilera, Ivan <iaguilera@mtb.com>; Narayana, Lakshmi [contractor] <lnarayana_contractor@mtb.com>; Manjunatha, Sandeep [contractor] <smanjunatha_contractor@mtb.com>; Duvvuru, Avinash  [contractor] <aduvvuru2_contractor@mtb.com>
+    //debug('level info', level, [levelLength, levelNodes.length], xLineEnd, radius);
+    //TODO make this return type a LevelView class, and make a NodeView class;
+    return {
+      length: length,
+      position: function(node, boss) {
+        const LABEL_SIZE_FACTOR = 2;
+        const LABEL_SIZE_DEFAULT = 10;
+        let index = levelNodes.indexOf(node);
+        let x = (index + 0.5) * nodeSpacing + (index in extraOffsetByNode ? extraOffsetByNode[index] : 0);
+
+        if (isNaN(x)) {
+          console.error('something went wrong', level, levelLength, maxLevel, xLineEnd, maxFrac);
+        }
+        let labelSize = (radius * LABEL_SIZE_FACTOR > LABEL_SIZE_DEFAULT)
+          ? LABEL_SIZE_DEFAULT + 'px'
+          : radius*LABEL_SIZE_FACTOR + 'px';
+        return {
+          node: node,
+          hasFocus: view.state.focusNodes.includes(node),
+          label: radius > MIN_RADIUS_LABEL || ((length / (radius * levelLength)) > 3 && radius > 3),
+          labelSize: labelSize,
+          r: radius,
+          x: margins.l + x + radius,
+          y: margins.t - m * x + b + radius,
+          angle: Math.atan(1/m)*180/Math.PI
+        }
+      }
+    }
+  }
+
+  hoverDelegate(delegate) {
+    this.hover(delegate, this.state.childString + ' of ');
+    //[0].node, , ' (' + d[0].node.getChildren(true).length + ')';
+  }
+
+  dblclick(node, prefix = null, suffix = null) {
+    d3.event.stopPropagation();
+    this.setState({
+      root: node
+    })
+  }
+
+
+  isVisibleInGraphState(node) {
+    return node.getAncestors(true).includes(this.state.root) || this.state.root.getAncestors().includes(node)
+  }
+
+  getNodePositions() {
+    let view = this;
+    let edges = [];
+    let nodes = {};
+    let dimensions = this.state.dimensions;
+    let root = this.state.root;
+    let ancestors = root.getAncestors()
+    let maxDepth = root.getMaxDepth() + root.getRootDistance();
+
+    let margins = {
+      l: 24,
+      r: 24,
+      t: ancestors.length == 0 ? 24 : 54,
+      b: 24
+    };
+
+    let child = root;
+    let maxLevelLength = 0;
+    while (child) {
+      //unfilter at root level
+      let levelNodes = child.getLevelNodes(root, child === root);
+      maxLevelLength = levelNodes.length > maxLevelLength ? levelNodes.length : maxLevelLength;
+      let level = child.getRootDistance(root);
+      child = null;
+      //TODO replace totalbreadth mechanism with one that considers consecutive node spacing
+      let totalbreadth = 0;
+      let shouldGroup = false;
+      let levelPath = this.levelPath(dimensions, margins, level, levelNodes, maxDepth, maxLevelLength, nodes);
+      let lastX = 0;
+      levelNodes.forEach(function(node){
+        let nodeView = levelPath.position(node, node.getParent(root) != null ? nodes[node.getParent(root).getId()] : null);
+        nodes[node.getId()] = nodeView;
+        if (!node.isRoot(root) && node.getParent(root).getId() in nodes) {
+          edges.push([nodes[node.getParent(root).getId()], nodeView]);
+          if (nodeView.x - lastX < nodeView.r) {
+            shouldGroup = true;
+          }
+        }
+        if (!child && node.getChildren().length > 0) {
+          child = node.getChildren()[0];
+        }
+        lastX = nodeView.x;
+      });
+      //TODO handle case where level 1 does not have enough spread (there's no way to see all those nodes ever)
+      if (shouldGroup && level > 1) {
+        let lastParent;
+        let lastColor;
+        let lastNonHidden;
+        levelNodes.forEach(function(node){
+          if (lastParent && lastColor && lastParent == node.getParent() && lastColor == view.state.colorFunction({node: node})) {
+            nodes[node.getId()]['isHidden'] = true;
+            lastNonHidden.span = nodes[node.getId()];
+          } else {
+            lastParent = node.getParent();
+            lastColor = view.state.colorFunction({node: node});
+            lastNonHidden = nodes[node.getId()];
+            lastNonHidden.delegate = lastParent;
+          }
+        });
+      }
+      //debug('level summary', levelNodes.length, levelNodes.filter(n=>(n.getChildren().length > 0)).length);
+    }
+
+    let last = nodes[root.getId()];
+    last.isAncestor = true;
+
+    nodes = Object.values(nodes);
+    let ancestorRadius = 20;
+    ancestors.forEach((node, i) => {
+      let n = {
+        node: node,
+        label: true,
+        labelSize: 10,
+        angle: 0,
+        r: ancestorRadius,
+        isAncestor: true,
+        x: i*2.5*ancestorRadius + margins.l + ancestorRadius,
+        y: margins.b // use bottom margin, since these are the nodes along the top
+      }
+      nodes.push(n)
+      edges.push([n, last])
+      last = n;
+    })
+    debug('end compute graph');
+    return {
+      nodeViews: nodes,
+      edgeViews: edges
+    }
+  }
+
 }
 
 
@@ -1199,6 +1359,7 @@ MkTreeNode.generateRandomTree = function(size, //total number of nodes in trees
     let levelCountArray = perLevelCount;
     perLevelCount = (level)=>(levelCountArray[level]);
   }
+  let tree = new MkTree();
   let lastLevel = null;
   let currentLevel = [];
   let nodesAdded = 0;
@@ -1209,7 +1370,7 @@ MkTreeNode.generateRandomTree = function(size, //total number of nodes in trees
 
   while (nodesAdded < size) {
     let nodeId = "L" + currentLevelIndex + "N" + currentLevel.length;
-    let node = new MkTreeNode({id: nodeId, attributes: {id: nodeId}});
+    let node = new MkTreeNode({id: nodeId, attributes: {id: nodeId}, graph: tree});
     currentLevel.push(node);
     nodesAdded++;
 
@@ -1231,7 +1392,7 @@ MkTreeNode.generateRandomTree = function(size, //total number of nodes in trees
     }
   }
 
-  return new MkTreeView({root: rootNode});
+  return new MkTreeView({graph: tree});
 }
 
 debug('loaded script');
