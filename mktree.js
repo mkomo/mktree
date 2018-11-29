@@ -24,6 +24,8 @@ GroupEdgeView: sourceNodeId, destNodeIds...
 CliqueView: nodeIds, ...
 EditableGraphView: nodeViews,
 */
+
+//The innards of a node are immutable
 class MkNode {
   constructor(props) {
     this.state = {};
@@ -65,6 +67,7 @@ class MkNode {
   }
 }
 
+
 class MkTreeNode extends MkNode {
   constructor(props) {
     super(props);
@@ -82,8 +85,7 @@ class MkTreeNode extends MkNode {
     }, false) !== null;
   }
 
-  //change node
-
+  //change relationships of node
   setParent(node) {
     this.state.parent = node;
   }
@@ -264,7 +266,7 @@ class MkTree extends MkGraph {
 
 const MAX_RADIUS = 20;
 const MIN_RADIUS_CENTER_TEXT = 0;
-const MIN_RADIUS_LABEL = 6;
+const MIN_RADIUS_LABEL = 5;
 
 class MkGraphView {
   constructor(props) {
@@ -376,7 +378,6 @@ class MkGraphView {
     return this.state.graph;
   }
 
-
   /**
    * test states
     rootId=EMTGJNA&filtersOn=humans //spread for huge number of child nodes
@@ -480,7 +481,7 @@ class MkGraphView {
     let focusNodesVisible = [];
     let excludingFilters = {};
     view.state.focusNodes.forEach(node => {
-      if (!node.isIncluded()) {
+      if (!node.isIncludedSelf()) {
         node.getExcludingFilters().forEach(filterName => {
           excludingFilters[filterName] = true;
         })
@@ -633,9 +634,11 @@ class MkGraphView {
     debug('end infoBox')
     return shouldRedraw;
   }
+
   appendGraphData(info) {
     //TODO
   }
+
   getStateToUnhideNodes(nodesToUnhide) {
     return {};
   }
@@ -690,6 +693,7 @@ class MkGraphView {
       edgeViews: edges
     }
   }
+
   hover(node, prefix = null, suffix = null) {
     d3.event.stopPropagation();
     if (node) {
@@ -958,7 +962,7 @@ class MkGraphView {
     //LABELS
     var nodelabels = this.container.selectAll("text")
       .data(nodes.filter(d => {
-        return d.label;
+        return (d.isHidden !== false) && !('span' in d) && d.label;
       }), d => d.node.getId());
 
     nodelabels.exit().remove();
@@ -969,13 +973,6 @@ class MkGraphView {
       .on('mouseover', d => view.hover(d.node))
       .on('click', d => view.click([d.node]))
       .on('dblclick', d => view.dblclick(d.node))
-      .text(view.state.label)
-      .attr("text-anchor", function(d) {
-        return d.r > MIN_RADIUS_CENTER_TEXT ? "middle" : "start";
-      })
-      .attr("alignment-baseline", function(d) {
-        return d.r > MIN_RADIUS_CENTER_TEXT ? "middle" : "bottom";
-      })
       .attr("x", function(d){
         if (d.r > MIN_RADIUS_CENTER_TEXT) {
           return d.x;
@@ -994,13 +991,28 @@ class MkGraphView {
         .style('opacity', d => d.node.isIncludedSelf() ? 1 : 0.8)
           .selection()
     .merge(nodelabels)
+      .each(function(d, i){
+        let textNode = d3.select(this);
+        let lineHeight = d.labelSize * 1.2;
+        let label = view.state.label(d, d.r * 2.0 / lineHeight);
+        label = Array.isArray(label) ? label : [label, ''];
+        var tspans = textNode.selectAll("tspan")
+            .data(label);
+        tspans.exit().remove();
+        tspans.enter().append('tspan')
+          //.attr('dx', 0)
+          //.attr('x', d.x)
+        .merge(tspans)
+          .text(line=>line)
+          .attr('dy', (line,i)=>{
+            return i == 0 ? (1 - label.filter(l=>l.length > 0).length) * 0.5 * lineHeight : lineHeight * (i);
+          })
+          .attr("text-anchor", d.r > MIN_RADIUS_CENTER_TEXT ? "middle" : "start")
+          .attr("alignment-baseline", "middle")
+          .transition(t)
+            .attr('x', d.x);
+      })
       .style('font-size', d => d.labelSize)
-      .attr("text-anchor", function(d) {
-        return d.r > MIN_RADIUS_CENTER_TEXT ? "middle" : "start";
-      })
-      .attr("alignment-baseline", function(d) {
-        return d.r > MIN_RADIUS_CENTER_TEXT ? "middle" : "bottom";
-      })
       .style('fill', d=> {
           let c = d3.color(view.state.colorFunction(d));
           return (d.r <= MIN_RADIUS_CENTER_TEXT || (c.opacity * (c.r + c.g + c.b)/3 > 128)) ? '#000' : '#CCC';
@@ -1144,8 +1156,8 @@ class MkTreeView extends MkGraphView {
           console.error('something went wrong', level, levelLength, maxLevel, xLineEnd, maxFrac);
         }
         let labelSize = (radius * LABEL_SIZE_FACTOR > LABEL_SIZE_DEFAULT)
-          ? LABEL_SIZE_DEFAULT + 'px'
-          : radius*LABEL_SIZE_FACTOR + 'px';
+          ? LABEL_SIZE_DEFAULT
+          : radius*LABEL_SIZE_FACTOR;
         return {
           node: node,
           hasFocus: view.state.focusNodes.includes(node),
@@ -1171,7 +1183,6 @@ class MkTreeView extends MkGraphView {
       root: node
     })
   }
-
 
   isVisibleInGraphState(node) {
     return node.getAncestors(true).includes(this.state.root) || this.state.root.getAncestors().includes(node)
