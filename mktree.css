@@ -37,7 +37,6 @@ svg {
 #info_box table {
   table-layout: fixed;
 }
-
 #info_box table td {
   vertical-align: top;
   overflow-wrap: break-word;
@@ -62,9 +61,11 @@ svg {
 #tooltip {
   position: absolute;
   display: none;
-  padding: 5px;
-  background-color: #aaa;
+  padding: 10px 15px;
+  font-size: 0.8em;
+  background-color: #ddd;
   user-select: none;
+  box-shadow: 0 2px 4px 0 rgba(0,0,0,0.16),0 2px 10px 0 rgba(0,0,0,0.12)!important;
 }
 text.nodelabel {
   user-select: none;
