@@ -264,7 +264,6 @@ class MkTree extends MkGraph {
   }
 }
 
-const MAX_RADIUS = 20;
 const MIN_RADIUS_CENTER_TEXT = 0;
 const MIN_RADIUS_LABEL = 5;
 
@@ -428,8 +427,7 @@ class MkGraphView {
     }
   }
 
-  search(criteriaString) {
-    debug('search starting');
+  searchCriteria(criteriaString) {
     //get separate terms in lowercase
     let criteria = criteriaString.toLowerCase().split(';');
     //trim criteria
@@ -438,6 +436,12 @@ class MkGraphView {
     criteria = criteria.map(e=>(e.includes('<') ? e.split('<')[1].split('>')[0]: e))
     //split into bundled terms
     criteria = criteria.map(e=>e.split(/[\s]+/));
+    return criteria;
+  }
+
+  search(criteriaString) {
+    debug('search starting');
+    let criteria = this.searchCriteria(criteriaString)
 
     let searchFields = this.state.searchFields;
     let nodes = [];
@@ -646,8 +650,8 @@ class MkGraphView {
   //TODO clean this up -- obviously just a test
   getNodePositions() {
     let view = this;
-    let edges = [];
-    let nodes = [];
+    let edgeViews = [];
+    let nodeViews = [];
     let dimensions = this.state.dimensions;
 
     let margins = {
@@ -663,7 +667,13 @@ class MkGraphView {
     let y = margins.t + ancestorRadius;
     let last = null;
 
-    Object.values(this.getGraph().getNodes()).filter(node=>node.isIncludedSelf()).forEach((node, i) => {
+    let nodes = Object.values(this.getGraph().getNodes()).filter(node=>node.isIncludedSelf());
+    if (this.state.searchSort) {
+      nodes.sort(this.state.searchSort);
+    } else {
+      nodes.sort();
+    }
+    nodes.forEach((node, i) => {
       if (y < dimensions.height - margins.t) {
         let n = {
           node: node,
@@ -674,9 +684,9 @@ class MkGraphView {
           x: x,
           y: y // use bottom margin, since these are the nodes along the top
         }
-        nodes.push(n)
+        nodeViews.push(n)
         if (last !== null) {
-          edges.push([last, n])
+          edgeViews.push([last, n])
         }
         last = n;
         if (x > width - ancestorRadius) {
@@ -689,8 +699,8 @@ class MkGraphView {
     })
     debug('end compute graph');
     return {
-      nodeViews: nodes,
-      edgeViews: edges
+      nodeViews: nodeViews,
+      edgeViews: edgeViews
     }
   }
 
@@ -700,13 +710,13 @@ class MkGraphView {
       let string = node instanceof MkNode ? this.state.tooltip(node) : node;
       this.tooltip
         .style('display', 'inline-block')
-        .text((prefix ? prefix : '') + 
+        .html((prefix ? prefix : '') + 
             string + 
             (suffix ? suffix : ''));
     } else {
       this.tooltip
         .style('display', 'none')
-        .text('');
+        .html('');
     }
   }
 
@@ -994,7 +1004,8 @@ class MkGraphView {
       .each(function(d, i){
         let textNode = d3.select(this);
         let lineHeight = d.labelSize * 1.2;
-        let label = view.state.label(d, d.r * 2.0 / lineHeight);
+        let labelLength = d.r * 2.0 / lineHeight > 2 ? 2 : 1;
+        let label = view.state.label(d, labelLength);
         label = Array.isArray(label) ? label : [label, ''];
         var tspans = textNode.selectAll("tspan")
             .data(label);
@@ -1005,7 +1016,7 @@ class MkGraphView {
         .merge(tspans)
           .text(line=>line)
           .attr('dy', (line,i)=>{
-            return i == 0 ? (1 - label.filter(l=>l.length > 0).length) * 0.5 * lineHeight : lineHeight * (i);
+            return i == 0 ? (1 - label.filter(l=>l && l.length > 0).length) * 0.5 * lineHeight : lineHeight;
           })
           .attr("text-anchor", d.r > MIN_RADIUS_CENTER_TEXT ? "middle" : "start")
           .attr("alignment-baseline", "middle")
@@ -1014,8 +1025,15 @@ class MkGraphView {
       })
       .style('font-size', d => d.labelSize)
       .style('fill', d=> {
-          let c = d3.color(view.state.colorFunction(d));
-          return (d.r <= MIN_RADIUS_CENTER_TEXT || (c.opacity * (c.r + c.g + c.b)/3 > 128)) ? '#000' : '#CCC';
+        if (d.r >= MIN_RADIUS_CENTER_TEXT) {
+          if (typeof view.state.colorFunction.textColor === 'function') {
+            return view.state.colorFunction.textColor(d);
+          } else {
+            return MkTreeView.contrastColor(view.state.colorFunction(d));
+          }
+        } else {
+          return "#000";
+        }
       })
       .transition(t)
         .style('opacity', d => d.node.isIncludedSelf() ? 1 : 0.8)
@@ -1040,15 +1058,28 @@ class MkGraphView {
 }
 
 //static function providing color
+MkGraphView.contrastColor = function(color) {
+  let c = d3.color(color);
+  return (c.opacity * (c.r + c.g + c.b)/3 > 128) ? '#000' : '#EEE';
+}
 MkGraphView.colorNodeByAttribute = function(colorAttribute, colors, defaultColor = '#000') {
-  return function(d) {
+  let cf = function(d) {
     let attributes = d.node.getAttributes();
     if (colorAttribute in attributes && attributes[colorAttribute].toLowerCase() in colors) {
-        return colors[attributes[colorAttribute].toLowerCase()];
+      return colors[attributes[colorAttribute].toLowerCase()];
     } else {
-        return defaultColor;
+      return defaultColor;
     }
   }
+  let fun = function(d) {
+    let colorResult = cf(d);
+    return Array.isArray(colorResult) ? colorResult[0] : colorResult;
+  }
+  fun.textColor = function(d) {
+    let colorResult = cf(d);
+    return Array.isArray(colorResult) ? colorResult[1] : MkGraphView.contrastColor(colorResult);
+  }
+  return fun;
 }
 
 class MkTreeView extends MkGraphView {
@@ -1077,7 +1108,7 @@ class MkTreeView extends MkGraphView {
   }
 
   appendGraphData(info) {
-    //TODO
+    let root = this.state.root;
     let descendents = root.getDescendents();
     descendents.unshift(root);
     info.addEntry('nodes in tree', descendents.length, descendents);
@@ -1094,7 +1125,7 @@ class MkTreeView extends MkGraphView {
     return super.shouldRedraw(stateChanged) || stateChanged.some(key=>GRAPH_AFFECTING_STATE.includes(key));
   }
 
-  levelPath(dimensions, margins, level, levelNodes, maxLevel, levelLength = null, nodes = null) {
+  levelPath(dimensions, margins, level, levelNodes, maxLevel, maxRadius, levelLength = null, nodes = null) {
     let view = this;
     let root = this.state.root;
     levelLength = levelLength == null ? levelNodes.length : levelLength
@@ -1114,10 +1145,18 @@ class MkTreeView extends MkGraphView {
     let perpendicularChildOffset = (bNext - b) * Math.cos(theta) * Math.sin(theta);
     let xLineEnd = w * frac/maxFrac;
     let length = xLineEnd / Math.cos(theta);
+    
+    //node size
+    let nodeSpacing = (xLineEnd * 1.0)/levelLength
+    let radius = maxRadius / (level + 1);
+    let generousRadius = Math.min(perpendicularChildOffset, nodeSpacing)/2;
+    if (radius < generousRadius) {
+      radius = Math.min(maxRadius, generousRadius);
+    }
 
+    //
     let extraOffsetByNode = {};
     let offset = 0;
-    let nodeSpacing = (xLineEnd * 1.0)/levelLength
     levelNodes.forEach((node, index)=>{
       let p = node.getParent(root) != null ? nodes[node.getParent(root).getId()] : null;
       if (p != null) {
@@ -1135,11 +1174,6 @@ class MkTreeView extends MkGraphView {
       }
       extraOffsetByNode[index] = offset;
     })
-    let radius = MAX_RADIUS / (level + 1);
-    let generousRadius = Math.min(perpendicularChildOffset, nodeSpacing)/2;
-    if (radius < generousRadius) {
-      radius = Math.min(MAX_RADIUS, generousRadius);
-    }
 
     //TODO optimize view for sparce view: radius based on density;
     //debug('level info', level, [levelLength, levelNodes.length], xLineEnd, radius);
@@ -1161,11 +1195,11 @@ class MkTreeView extends MkGraphView {
         return {
           node: node,
           hasFocus: view.state.focusNodes.includes(node),
-          label: radius > MIN_RADIUS_LABEL || ((length / (radius * levelLength)) > 3 && radius > 3),
+          label: level == 0 || (nodeSpacing > labelSize && radius > 3),
           labelSize: labelSize,
           r: radius,
-          x: margins.l + x + radius,
-          y: margins.t - m * x + b + radius,
+          x: margins.l + x,
+          y: margins.t - m * x + b,
           angle: Math.atan(1/m)*180/Math.PI
         }
       }
@@ -1196,12 +1230,15 @@ class MkTreeView extends MkGraphView {
     let root = this.state.root;
     let ancestors = root.getAncestors()
     let maxDepth = root.getMaxDepth() + root.getRootDistance();
-
+    
+    let maxRadius = 20;
+    let ancestorRadius = 20;//TODO make this larger
+    let margin = maxRadius * 2;
     let margins = {
-      l: 24,
-      r: 24,
-      t: ancestors.length == 0 ? 24 : 54,
-      b: 24
+      l: margin,
+      r: margin,
+      t: margin + (ancestors.length == 0 ? 0 : ancestorRadius * 2.5),
+      b: margin
     };
 
     let child = root;
@@ -1215,7 +1252,7 @@ class MkTreeView extends MkGraphView {
       //TODO replace totalbreadth mechanism with one that considers consecutive node spacing
       let totalbreadth = 0;
       let shouldGroup = false;
-      let levelPath = this.levelPath(dimensions, margins, level, levelNodes, maxDepth, maxLevelLength, nodes);
+      let levelPath = this.levelPath(dimensions, margins, level, levelNodes, maxDepth, maxRadius, maxLevelLength, nodes);
       let lastX = 0;
       levelNodes.forEach(function(node){
         let nodeView = levelPath.position(node, node.getParent(root) != null ? nodes[node.getParent(root).getId()] : null);
@@ -1255,7 +1292,6 @@ class MkTreeView extends MkGraphView {
     last.isAncestor = true;
 
     nodes = Object.values(nodes);
-    let ancestorRadius = 20;
     ancestors.forEach((node, i) => {
       let n = {
         node: node,
@@ -1264,8 +1300,8 @@ class MkTreeView extends MkGraphView {
         angle: 0,
         r: ancestorRadius,
         isAncestor: true,
-        x: i*2.5*ancestorRadius + margins.l + ancestorRadius,
-        y: margins.b // use bottom margin, since these are the nodes along the top
+        x: i*2.5*ancestorRadius + margins.l,
+        y: margins.b // use bottom margin, since these are the nodes along the top TODO make cleaner
       }
       nodes.push(n)
       edges.push([n, last])
