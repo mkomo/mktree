@@ -15,10 +15,11 @@
 let seed = 'mktree' + Math.random();
 console.log('seed', seed)
 Math.seedrandom(seed);
-let v = MkTreeNode.generateRandomTree(20500, 11,
+let tree = MkTree.generateRandomTree(20500, 11,
     [1,7,38,188,837,2625,5860,8731,2045,166,2],
     [1,6,33,150,492, 874,1243, 268,  18,  1,0]
     )
+let v = new MkGraphView({graph: tree})
 v.render();
 
 </script>
