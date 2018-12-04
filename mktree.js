@@ -25,14 +25,14 @@ CliqueView: nodeIds, ...
 EditableGraphView: nodeViews,
 */
 
-//The innards of a node are immutable
+//The innards of a node should be immutable in order to maintain some sense of sanity
 class MkNode {
   constructor(props) {
     this.state = {};
     this.state.id = props.id;
     this.state.graph = props.graph;
     this.state.attributes = props.attributes || {};
-    
+
     this.state.graph.addNode(this);
   }
 
@@ -67,6 +67,48 @@ class MkNode {
   }
 }
 
+class MkEdge {
+  constructor(props, source, destination) {
+    this.source = source;
+    this.destination = destination;
+    this.state = {};
+    this.state.id = props.id;
+    this.state.graph = props.graph;
+    this.state.attributes = props.attributes || {};
+
+    this.state.graph.addEdge(this);
+  }
+
+  getFilters() {
+    return this.getGraph().getFilters();
+  }
+
+  getExcludingFilters() {
+    let filters = this.getFilters();
+    return Object.keys(filters).filter(filterName => !filters[filterName](this));
+  }
+
+  //about this node
+  getId(){
+    return this.state.id;
+  }
+
+  getAttributes(){
+    return this.state.attributes;
+  }
+
+  getGraph() {
+    return this.state.graph;
+  }
+
+  isIncludedSelf() {
+    return Object.values(this.getFilters()).reduce((acc, f) => (acc && f(this)), true);
+  }
+
+  toString() {
+    return this.getId();
+  }
+}
 
 class MkTreeNode extends MkNode {
   constructor(props) {
@@ -130,7 +172,7 @@ class MkTreeNode extends MkNode {
     }, unfiltered);
     return collector;
   }
-  
+
   getMaxDepth(unfiltered = false) {
     let children = this.getChildren(unfiltered)
     if (children.length == 0) {
@@ -219,6 +261,7 @@ class MkGraph {
   constructor(props = {}) {
     this.state = Object.assign({}, {
       nodes: props.nodes || {},
+      edges: props.edges || {},
       attributes: props.attributes || {},
       filters: props.filters || []
     })
@@ -235,9 +278,17 @@ class MkGraph {
   addNode(node) {
     this.state.nodes[node.getId()] = node;
   }
-  
+
+  addEdge(edge) {
+    this.state.edge[edge.getId()] = edge;
+  }
+
   getNodes() {
     return this.state.nodes;
+  }
+
+  getEdges() {
+    return this.state.edges;
   }
 
   getNode(nodeId) {
@@ -258,7 +309,7 @@ class MkTree extends MkGraph {
   }
 
   getRoot() {
-    let node; 
+    let node;
     for (node in this.getNodes()) break;
     return this.getNode(node).getRoot();
   }
@@ -466,7 +517,7 @@ class MkGraphView {
       focusNodes: nodes
     })
   }
-  
+
   shouldRedraw(stateChanged) {
     const GRAPH_AFFECTING_STATE = ["colorFunction", "label", "filters", "filtersOn", "dimensions"];
     return !stateChanged || stateChanged.some(key=>GRAPH_AFFECTING_STATE.includes(key));
@@ -660,7 +711,7 @@ class MkGraphView {
       t: 24,
       b: 24
     };
-    
+
     let ancestorRadius = 20;
     let width = dimensions.graphWidth - margins.l - margins.r;
     let x = margins.l + ancestorRadius;
@@ -710,8 +761,8 @@ class MkGraphView {
       let string = node instanceof MkNode ? this.state.tooltip(node) : node;
       this.tooltip
         .style('display', 'inline-block')
-        .html((prefix ? prefix : '') + 
-            string + 
+        .html((prefix ? prefix : '') +
+            string +
             (suffix ? suffix : ''));
     } else {
       this.tooltip
@@ -724,7 +775,7 @@ class MkGraphView {
     //TODO consider what clustered nodes mean in a non-tree graph
     this.hover(delegate, 'cluster containing ');
   }
-  
+
   click(nodes, prefix = null, suffix = null) {
     d3.event.stopPropagation();
     this.setState({
@@ -1119,7 +1170,7 @@ class MkTreeView extends MkGraphView {
     let levelCount = root.getMaxDepth() + 1;
     info.addEntry('levels visible', levelCount)
   }
-  
+
   shouldRedraw(stateChanged) {
     const GRAPH_AFFECTING_STATE = ["root", "childString"];
     return super.shouldRedraw(stateChanged) || stateChanged.some(key=>GRAPH_AFFECTING_STATE.includes(key));
@@ -1145,7 +1196,7 @@ class MkTreeView extends MkGraphView {
     let perpendicularChildOffset = (bNext - b) * Math.cos(theta) * Math.sin(theta);
     let xLineEnd = w * frac/maxFrac;
     let length = xLineEnd / Math.cos(theta);
-    
+
     //node size
     let nodeSpacing = (xLineEnd * 1.0)/levelLength
     let radius = maxRadius / (level + 1);
@@ -1231,7 +1282,7 @@ class MkTreeView extends MkGraphView {
     let root = this.state.root;
     let ancestors = root.getAncestors()
     let maxDepth = root.getMaxDepth() + root.getRootDistance();
-    
+
     let maxRadius = 20;
     let ancestorRadius = 20;//TODO make this larger
     let margin = maxRadius * 2;
@@ -1396,7 +1447,7 @@ InfoBox.of = function(node, mainKey = null, parentKey = 'parent', childKey = 'ch
 //TODO make this private
 !function(a,b,c,d,e,f,g,h,i){function j(a){var b,c=a.length,e=this,f=0,g=e.i=e.j=0,h=e.S=[];for(c||(a=[c++]);d>f;)h[f]=f++;for(f=0;d>f;f++)h[f]=h[g=s&g+a[f%c]+(b=h[f])],h[g]=b;(e.g=function(a){for(var b,c=0,f=e.i,g=e.j,h=e.S;a--;)b=h[f=s&f+1],c=c*d+h[s&(h[f]=h[g=s&g+b])+(h[g]=b)];return e.i=f,e.j=g,c})(d)}function k(a,b){var c,d=[],e=typeof a;if(b&&"object"==e)for(c in a)try{d.push(k(a[c],b-1))}catch(f){}return d.length?d:"string"==e?a:a+"\0"}function l(a,b){for(var c,d=a+"",e=0;e<d.length;)b[s&e]=s&(c^=19*b[s&e])+d.charCodeAt(e++);return n(b)}function m(c){try{return o?n(o.randomBytes(d)):(a.crypto.getRandomValues(c=new Uint8Array(d)),n(c))}catch(e){return[+new Date,a,(c=a.navigator)&&c.plugins,a.screen,n(b)]}}function n(a){return String.fromCharCode.apply(0,a)}var o,p=c.pow(d,e),q=c.pow(2,f),r=2*q,s=d-1,t=c["seed"+i]=function(a,f,g){var h=[];f=1==f?{entropy:!0}:f||{};var o=l(k(f.entropy?[a,n(b)]:null==a?m():a,3),h),s=new j(h);return l(n(s.S),b),(f.pass||g||function(a,b,d){return d?(c[i]=a,b):a})(function(){for(var a=s.g(e),b=p,c=0;q>a;)a=(a+c)*d,b*=d,c=s.g(1);for(;a>=r;)a/=2,b/=2,c>>>=1;return(a+c)/b},o,"global"in f?f.global:this==c)};if(l(c[i](),b),g&&g.exports){g.exports=t;try{o=require("crypto")}catch(u){}}else h&&h.amd&&h(function(){return t})}(this,[],Math,256,6,52,"object"==typeof module&&module,"function"==typeof define&&define,"random");
 
-MkTreeNode.generateRandomTree = function(size, //total number of nodes in trees
+MkTree.generateRandomTree = function(size, //total number of nodes in trees
     levelCount, //total number of levels in tree
     perLevelCount = null, //array of length <levelCount> OR function name (linear, quadratic, exponential, log, asymptotic) OR function(levelNumber) => numberOfNodes
     childProbDist = null) { //function with domain [0, levelCount - 1]...
@@ -1439,7 +1490,7 @@ MkTreeNode.generateRandomTree = function(size, //total number of nodes in trees
     }
   }
 
-  return new MkTreeView({graph: tree});
+  return tree;
 }
 
 debug('loaded script');
