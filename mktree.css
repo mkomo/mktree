@@ -1,34 +1,71 @@
+html {
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   background-color: #555;
   position: relative;
   font-family: sans-serif;
 }
+
 svg {
-  display: block;
-  margin: 0;
   background-color: #fff;
 }
-#info_box {
+
+/********************* LEGEND ********************/
+.legend {
+  font-size: 0.7em;
   position: absolute;
-  right: 0px;
+  bottom: 0;
+  width: 67%;
+  background-color: #f5f5f5;
+}
+.legend_entry {
+  display: inline-block;
+  margin: 5px 5px;
+  cursor: pointer;
+}
+.legend_entry span{
+  display: inline-block;
+  padding: 0px 5px;
+}
+
+/********************* INFO BOX ********************/
+#info_box {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+
+  position: absolute;
+  right: 0%;
   top: 0px;
   height: 100%;
   /* either height or bottom: bottom: 10px; height: 100%;*/
   width: 33%;
-  background-color: #fff;
-  overflow-y: scroll;
-  padding: 0 10px;
+  background-color: #f5f5f5;
+}
+#info_box.hidden{
+  right: -33%;
+}
+#toggle_info_box {
+  position: absolute;
+  display: block;
+  padding: 5px;
+  cursor: pointer;
+  font-weight: bold;
+  top: 0px;
+  right: 100%;
+  background-color: #f5f5f5;
 }
 #info_box .info_element {
-  margin: 10px 0 0 0;
+  overflow-y: scroll;
+  background-color: #fefefe;
+  margin-bottom: 10px;
   width: 100%;
   box-sizing: border-box;
   padding: 5px;
   border: 1px solid #444;
-}
-#info_box_title {
-  padding: 0;
 }
 .info_box_filter {
   padding-left: 10px;
@@ -58,6 +95,32 @@ svg {
 #info_box table .link:hover {
   cursor: pointer;
 }
+
+#info_box {
+    position: absolute;
+}
+
+#info_box header {
+  padding: 1em 1em 0 1em;
+    flex-shrink: 0;
+}
+#info_box header h2 {
+  padding: 0;
+  margin: 0;
+}
+
+#info_box .info_box_body{
+    flex-grow: 1;
+    overflow: auto;
+    min-height: 2em;
+    padding: 1em;
+}
+#info_box footer{
+    padding: 1em;
+    flex-shrink: 0;
+}
+
+/********************* TOOLTIP ********************/
 #tooltip {
   position: absolute;
   display: none;
@@ -67,6 +130,8 @@ svg {
   user-select: none;
   box-shadow: 0 2px 4px 0 rgba(0,0,0,0.16),0 2px 10px 0 rgba(0,0,0,0.12)!important;
 }
+
+/********************* GRAPH (include only stuff that shouldn't be exported) ********************/
 text.nodelabel {
   user-select: none;
 }
