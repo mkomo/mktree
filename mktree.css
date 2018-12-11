@@ -4,9 +4,30 @@ html {
 
 body {
   margin: 0;
-  background-color: #555;
+  background-color: #CCC;
   position: relative;
   font-family: sans-serif;
+}
+
+.loading {
+  width: 30%;
+  padding: 10% 0;
+  margin: 10% auto;
+  text-align: center;
+  font-family: monospace;
+  font-size: 3em;
+  background-color: #FFFFFF55;
+}
+
+.loading_small {
+  display: inline-block;
+  position: absolute;
+  top: 1em;
+  left: 1em;
+  font-size: 1em;
+  padding: 1em;
+  font-family: monospace;
+  background-color: #FFFFFF55;
 }
 
 svg {
@@ -20,6 +41,10 @@ svg {
   bottom: 0;
   width: 67%;
   background-color: #f5f5f5;
+  padding: 0.5em;
+}
+.hidden_info_box  .legend {
+  width: 100%;
 }
 .legend_entry {
   display: inline-block;
@@ -45,7 +70,7 @@ svg {
   width: 33%;
   background-color: #f5f5f5;
 }
-#info_box.hidden{
+.hidden_info_box #info_box{
   right: -33%;
 }
 #toggle_info_box {
