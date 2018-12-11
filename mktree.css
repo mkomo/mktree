@@ -35,20 +35,23 @@ svg {
 }
 
 /********************* LEGEND ********************/
-.legend {
-  font-size: 0.7em;
+#legend_container {
   position: absolute;
   bottom: 0;
   width: 67%;
+}
+.hidden_info_box  #legend_container {
+  width: 100%;
+}
+.legend {
+  font-size: 0.7em;
   background-color: #f5f5f5;
   padding: 0.5em;
 }
-.hidden_info_box  .legend {
-  width: 100%;
-}
 .legend_entry {
   display: inline-block;
-  margin: 5px 5px;
+  padding: 3px 3px;
+  margin: 2px 2px;
   cursor: pointer;
 }
 .legend_entry span{
@@ -138,7 +141,7 @@ svg {
     flex-grow: 1;
     overflow: auto;
     min-height: 2em;
-    padding: 1em;
+    padding: 0.5em 1em;
 }
 #info_box footer{
     padding: 1em;
