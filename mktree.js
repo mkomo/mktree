@@ -202,7 +202,7 @@ class MkTreeNode extends MkNode {
     });
   }
 
-  
+
 
   getFirst(predicate, includeSelf = true) {
     let value = (includeSelf && predicate.call(this, this)) ? this : null;
@@ -226,9 +226,6 @@ class MkTreeNode extends MkNode {
   //weights
   //keep public
   getWeightOfSelf() {
-    if (this.getId() === 'TDEVY8R') {
-      console.log('checking weight of matt');
-    }
     return 1; //TODO allow overriding
   }
 
@@ -281,7 +278,7 @@ class MkTreeNode extends MkNode {
     return this.getFractionOfParent(root, label) * (this.isRoot(root) ? 1 : this.getParent().getFractionOfRoot(root, label));
   }
 
-  
+
   //keep public
   getFractionOfParent(root = this.getRoot(), label='DEFAULT') {
     if (this.isRoot(root)) {
@@ -396,6 +393,10 @@ class MkTree extends MkGraph {
 
 const MIN_RADIUS_CENTER_TEXT = 0;
 const MIN_RADIUS_LABEL = 5;
+const LINE_HEIGHT_FACTOR = 1.2; //line spacing
+const LABEL_SIZE_FACTOR = 2;
+const LABEL_SIZE_DEFAULT = 10;
+const MIN_NODE_HEIGHT_FOR_LABEL = 8;
 
 class Stateful {
   setState(newState) { //TODO extract this to super class
@@ -453,7 +454,7 @@ class MkGraphLegend extends Stateful {
     super();
     let categories = props.categories;
     let attributeKey = props.attributeKey;
-    
+
     this.graph = graph;
     this.state = {
       categories: props.categories || {},
@@ -525,11 +526,11 @@ class MkGraphInfo {
   constructor(graphView, parentElement = document.body) {
     this.graphView = graphView;
     this.parentElement = parentElement;
-    
+
     this.updateFocus = this.updateFocus.bind(this);
     this.left = this.left.bind(this);
     this.open = this.open.bind(this);
-    
+
     let d3parent = d3.select(this.parentElement);
 
     this.sideBar = d3parent.append("div").attr("id", 'info_box');
@@ -554,11 +555,11 @@ class MkGraphInfo {
     this.toggle = this.sideBar.append('div').attr('id', 'toggle_info_box').text('<>').on('click', ()=>{this.open(!this.isOpen)});
     this.isOpen = true;
   }
-  
+
   left(){
     return this.sideBar.node().getBoundingClientRect().left;
   }
-  
+
   open(isOpen = null) {
     if (isOpen === null || this.isOpen == isOpen) {
       return this.isOpen;
@@ -567,7 +568,7 @@ class MkGraphInfo {
     } else {
       this.isOpen = false;
     }
-    this.sideBar.classed('hidden', !this.isOpen)
+    d3.select(this.parentElement).classed('hidden_info_box', !this.isOpen)
     this.graphView.render();
   }
 
@@ -761,10 +762,9 @@ class MkGraphView extends Stateful {
       filters: props.filters || {},
       filtersOn: props.filtersOn || []
     }
-    
+
     this.parentElement = parentElement;
     let d3parent = d3.select(parentElement);
-    console.log(d3)
     this.parentElement.innerHTML = '';
     this.state.filters['focus'] = function(node) {
       return view.state.focusNodes.length == 0 || view.state.focusNodes.includes(node);
@@ -800,6 +800,9 @@ class MkGraphView extends Stateful {
         .style("left", (d3.event.pageX + 28) + "px")
         .style("top", (d3.event.pageY + 28) + "px");
     })
+
+    this.loader = d3parent.append("span")
+      .attr("class", 'loading_small').text('loading...');
 
     window.addEventListener("resize", e=>(view.render()));
 
@@ -1013,9 +1016,10 @@ class MkGraphView extends Stateful {
   render(changed) {
     debug('render', changed);
     //todo add loading spinner
+    this.loader.style('display', 'inline-block');
     if (!changed || (changed && changed.includes('dimensions'))) {
       var d = this.getDimensions();
-      
+
       this.svg
         .attr("width", d.width)
         .attr("height", d.height)
@@ -1026,9 +1030,8 @@ class MkGraphView extends Stateful {
     let activeFilters = {};
     this.state.filtersOn.forEach(filterName=> {
       activeFilters[filterName] = this.state.filters[filterName];
-      console.log('activeFilters', activeFilters);
     })
-    
+
     this.legend.render();
     let legendFilter = this.legend.getSelectionName();
     if (legendFilter) {
@@ -1041,10 +1044,12 @@ class MkGraphView extends Stateful {
 
     //todo remove loading spinner
     if (shouldRedraw) {
-      let view = this;
       setTimeout(()=>{
-        view.drawGraphElements();
+        this.drawGraphElements();
+        this.loader.style('display', 'none');
       }, 10);
+    } else {
+      this.loader.style('display', 'none');
     }
   }
 
@@ -1064,20 +1069,20 @@ class MkGraphView extends Stateful {
   }
 
   drawGraphElements() {
+    debug('start drawGraphElements');
     let view = this;
-    let nodePositions = view.getNodePositions()
+    let nodePositions = this.getNodePositions()
     let nodes = nodePositions.nodeViews;
     let edges = nodePositions.edgeViews;
 
     const CLASSES = {
         line: 'edge'
       };
-    //TODO get rid of isAncestor -- doesn't make sense outside the context of a tree
     var line = d3.line()
       .x((d,index)=>{
-        return d.x + (d.isAncestor ? 0 : (index == 0 ? 1 : -1)) * d.edgeOffsetX;
+        return d.x + (index == 0 ? 1 : -1) * d.edgeOffsetX;
       })
-      .y((d, index)=>(d.y + (d.isAncestor ? 0 : (index == 0 ? 1 : -1)) * d.edgeOffsetY));
+      .y((d, index)=>(d.y + (index == 0 ? 1 : -1) * d.edgeOffsetY));
 
     let t = this.svg.transition().duration(750);
 
@@ -1094,7 +1099,7 @@ class MkGraphView extends Stateful {
     edge.enter().append("path")
       .attr("class", CLASSES.line)
       .style('stroke', d=>{
-        return view.state.colorFunction(d[1]);
+        return this.state.colorFunction(d[1]);
       })
       .style('stroke-width','1.5px')
       .style('opacity',0)
@@ -1123,12 +1128,12 @@ class MkGraphView extends Stateful {
       .attr("class", 'group_edge')
       .classed('clickable', true)
       .style('fill', d=>{
-        return view.state.colorFunction(d[1]);
+        return this.state.colorFunction(d[1]);
       })
       .style('opacity',0)
-      .on('mouseover', d=> view.hoverDelegate(d[0].node))
-      .on('click', d => view.click([d[0].node]))
-      .on('dblclick', d => view.dblclick(d[0].node))
+      .on('mouseover', d=> this.hoverDelegate(d[0].node))
+      .on('click', d => this.click([d[0].node]))
+      .on('dblclick', d => this.dblclick(d[0].node))
       .transition(t)
           .delay(500)
         .style('opacity', d => d[0].node.isIncludedSelf() ? 0.5 : 0.1)
@@ -1158,11 +1163,11 @@ class MkGraphView extends Stateful {
     groupNodes.enter().append("polygon")
       .attr("class", 'group_node')
       .classed('clickable', true)
-      .style('fill', view.state.colorFunction)
+      .style('fill', this.state.colorFunction)
       .style('opacity',0)
-      .on('mouseover', d=>view.hoverDelegate(d.delegate))
-      .on('click', d => view.click([d.delegate]))
-      .on('dblclick', d => view.dblclick(d.delegate))
+      .on('mouseover', d=>this.hoverDelegate(d.delegate))
+      .on('click', d => this.click([d.delegate]))
+      .on('dblclick', d => this.dblclick(d.delegate))
       .transition(t)
           .delay(500)
         .style('opacity', d => d.delegate.isIncludedSelf() ? 1 : 0.2)
@@ -1208,16 +1213,16 @@ class MkGraphView extends Stateful {
             return d.height + (d.hasFocus ? 2 : 0);
           })
           .style('opacity', d => d.node.isIncludedSelf() || d.hasFocus ? 1 : 0.2)
-          .style('fill', view.state.colorFunction)
+          .style('fill', this.state.colorFunction)
       .selection().raise();
 
     circle.enter().append("rect")
       .classed('node', true)
       .classed('clickable', true)
       .classed('focus', d=>d.hasFocus)
-      .on('mouseover', d=> view.hover(d.node))
-      .on('click', d => view.click([d.node]))
-      .on('dblclick', d => view.dblclick(d.node))
+      .on('mouseover', d=> this.hover(d.node))
+      .on('click', d => this.click([d.node]))
+      .on('dblclick', d => this.dblclick(d.node))
       .attr('id', d => d.node.getId())
       .attr("x", function(d) {
         return d.x - d.width/2 - (d.hasFocus ? 1 : 0);
@@ -1231,7 +1236,7 @@ class MkGraphView extends Stateful {
       .attr("height", function(d){
         return d.height + (d.hasFocus ? 2 : 0);
       })
-      .style('fill', view.state.colorFunction)
+      .style('fill', this.state.colorFunction)
       .style('opacity',0)
       .transition(t)
           .delay(500)
@@ -1246,12 +1251,13 @@ class MkGraphView extends Stateful {
 
     nodelabels.exit().remove();
 
+    let labelFunc = this.state.label;
     nodelabels.enter().append("text")
       .attr("class", 'nodelabel')
       .classed('clickable', true)
-      .on('mouseover', d => view.hover(d.node))
-      .on('click', d => view.click([d.node]))
-      .on('dblclick', d => view.dblclick(d.node))
+      .on('mouseover', d => this.hover(d.node))
+      .on('click', d => this.click([d.node]))
+      .on('dblclick', d => this.dblclick(d.node))
       .attr("x", function(d){
         if (d.width > MIN_RADIUS_CENTER_TEXT) {
           return d.x;
@@ -1272,15 +1278,15 @@ class MkGraphView extends Stateful {
     .merge(nodelabels)
       .each(function(d, i){
         let textNode = d3.select(this);
-        let lineHeight = d.labelSize * 1.2;
-        let labelLength = Math.floor(d.height / lineHeight);
+        let lineHeight = d.labelSize * LINE_HEIGHT_FACTOR;
+        let labelLength = Math.max(Math.floor(d.height / lineHeight), 1);
         let labelWidth = d.width / d.labelSize;
-        let label = view.state.label(d, labelLength, labelWidth);
+        let label = labelFunc(d, labelLength, labelWidth);
         label = Array.isArray(label) ? label : [label, ''];
         var tspans = textNode.selectAll("tspan")
             .data(label);
         const LABEL_TEXT_WIDTH_FACTOR = 1.9;
-        let trunc = (s, width) => (width === null || !s ? s : (s.length <= width * LABEL_TEXT_WIDTH_FACTOR ? s : s.substr(0, width * LABEL_TEXT_WIDTH_FACTOR - 3) + '...'));
+        let trunc = (s, width) => (width === null || !s ? s : (s.length <= width * LABEL_TEXT_WIDTH_FACTOR ? s : s.substr(0, width * LABEL_TEXT_WIDTH_FACTOR - 2) + '...'));
         tspans.exit().remove();
         tspans.enter().append('tspan')
           //.attr('dx', 0)
@@ -1297,11 +1303,11 @@ class MkGraphView extends Stateful {
       })
       .style('font-size', d => d.labelSize)
       .style('fill', d=> {
-        if (d.width >= MIN_RADIUS_CENTER_TEXT) {
-          if (typeof view.state.colorFunction.textColor === 'function') {
-            return view.state.colorFunction.textColor(d);
+        if (d.width >= MIN_RADIUS_CENTER_TEXT && d.node.isIncludedSelf()) {
+          if (typeof this.state.colorFunction.textColor === 'function') {
+            return this.state.colorFunction.textColor(d);
           } else {
-            return MkTreeView.contrastColor(view.state.colorFunction(d));
+            return MkTreeView.contrastColor(this.state.colorFunction(d));
           }
         } else {
           return "#000";
@@ -1362,7 +1368,6 @@ class MkTreeView extends MkGraphView {
       childString: props.childString || 'children',
       root: props.root || this.state.graph.getRoot()
     });
-    let view = this;
 
     this.render = this.render.bind(this);
   }
@@ -1397,82 +1402,48 @@ class MkTreeView extends MkGraphView {
     return super.shouldRedraw(stateChanged) || stateChanged.some(key=>GRAPH_AFFECTING_STATE.includes(key));
   }
 
-  levelPath(dimensions, margins, level, levelNodes, maxLevel, maxRadius, levelLength = null, nodes = null) {
+  levelPath(ch, dimensions, margins, levelNodes, nodes, rootPosition) {
     //setup
-    let view = this;
-    let root = this.state.root;
     let w = dimensions.graphWidth - margins.l - margins.r;
     let h = dimensions.graphHeight - margins.t - margins.b;
-    
-    let fracFunc = (maxLevel > 4) 
-      ? level => ((1 - 3/(level + 3)))
-      : level => level / maxLevel;
-    let frac = fracFunc(level);
-    let maxFrac = maxLevel == 0 ? 1 : fracFunc(maxLevel);
 
-    console.log("levelPath", level, maxLevel, frac, maxFrac);
     //linear
-    let rootPosition = 'left';
-    let isRootInCorner = rootPosition === 'corner';
-    let isRootOnLeft = rootPosition === 'left';
 
     let xLineStart, xLineChange, yLineStart, yLineChange;
-    
-    if (isRootInCorner) {
-      xLineStart = 0;
-      xLineChange = w * frac/maxFrac;
-      yLineStart = h * frac/maxFrac;
-      yLineChange = -1 * h * frac/maxFrac;
-    } else if (isRootOnLeft) {
-      xLineStart = w * frac/maxFrac;
+
+    if (rootPosition === 'corner') {
+      //TODO
+    } else if (rootPosition === 'left') {
+      xLineStart = ch.offset;
       xLineChange = 0;
       yLineStart = h;
       yLineChange = -1 * h;
     } else {
-      //root is on top
-      xLineStart = 0;
-      xLineChange = w;
-      yLineStart = h * frac/maxFrac;
-      yLineChange = 0;
     }
-    
-    let lineLength = Math.sqrt(Math.pow(xLineChange, 2) + Math.pow(yLineChange, 2))
-    levelLength = levelLength == null ? levelNodes.length : levelLength
 
-    //node size
-    if (levelNodes.length === 1 && !levelNodes[0].isIncludedSelf) {
-      //TODO make this row more narrow. also every row should decide on distance from edge of previous level
-    }
-    let minRadius = 5;
-    let radius = Math.max(
-        Math.max(
-          maxRadius / (level + 1),
-          (lineLength / levelLength > 3 * maxRadius) ? maxRadius : 0
-        ),
-        minRadius
-    );
-    
-    //TODO better radius decision
+    let nodeWidth = ch.width;
+    let nodeHeight = ch.height;
 
-    let canShowAllNodes = lineLength >= radius * 1.7 * levelLength;
-    //TODO this logic does not fix filter to Enterprise data (nodes too spread out)
+    let root = this.state.root;
+
     let f;
     if (true) { //linear
-      let method = canShowAllNodes 
-          ? 'fill' // fill the row as evenly as possible
+      let method = (ch.extraSpace >= 0)
+          ? 'betterfill' // fill the row as evenly as possible
           : 'weight'; // position in row based on weight
 
       if (method === 'fill') {
-        
         let extraOffsetByNode = {};
         let offset = 0;
         levelNodes.forEach((node, index)=>{
+          //TODO correct based on tree weight (grant more padding in proportion to the node's subtree weight)
+          //this process corrects based on parent position if there's extra room in the line (levelLength > levelNodes.length)
           let parent = node.getParent(root) != null ? nodes[node.getParent(root).getId()] : null;
           if (parent != null) {
             let siblings = parent.node.getChildren();
             let childIndex = siblings.indexOf(node);
-            let maxOffset = (levelLength - levelNodes.length) / levelLength;
-            let bestOffset = parent.pathFrac - (index + siblings.length * 0.5 - childIndex) / levelLength;
+            let maxOffset = (ch.levelLength - levelNodes.length) / ch.levelLength;
+            let bestOffset = parent.pathFrac - (index + siblings.length * 0.5 - childIndex) / ch.levelLength;
             if (bestOffset > offset) {
               if (maxOffset >= bestOffset) {
                 offset = bestOffset;
@@ -1485,7 +1456,43 @@ class MkTreeView extends MkGraphView {
         })
         f = (node) => {
           let index = levelNodes.indexOf(node);
-          return ((index + 0.5) / levelLength) + (index in extraOffsetByNode ? extraOffsetByNode[index] : 0);
+          return ((index + 0.5) / ch.levelLength) + (index in extraOffsetByNode ? extraOffsetByNode[index] : 0);
+        }
+      } else if (method === 'betterfill') {
+        if (ch.levelLength !== levelNodes.length) {
+          //previous level has more nodes, so position based on parent
+          let extraOffsetByNode = {};
+          let offset = 0;
+          levelNodes.forEach((node, index)=>{
+            let parent = node.getParent(root) != null ? nodes[node.getParent(root).getId()] : null;
+            if (parent != null) {
+              let maxOffset = (ch.levelLength - levelNodes.length) / ch.levelLength;
+              let siblings = parent.node.getChildren();
+              let childIndex = siblings.indexOf(node);
+              let bestOffset = parent.pathFrac - (index + siblings.length * 0.5 - childIndex) / ch.levelLength;
+              if (bestOffset > offset) {
+                if (maxOffset >= bestOffset) {
+                  offset = bestOffset;
+                } else {
+                  offset = maxOffset;
+                }
+              }
+            }
+            extraOffsetByNode[index] = offset;
+          })
+          f = (node) => {
+            let index = levelNodes.indexOf(node);
+            return ((index + 0.5) / ch.levelLength) + (index in extraOffsetByNode ? extraOffsetByNode[index] : 0);
+          }
+        } else {
+          //level has more nodes than previous, so position based on children
+          let extraSpaceFrac = ch.extraSpace/ch.lineLength;
+          f = (node) => {
+            let index = levelNodes.indexOf(node);
+            let startFrac = node.getStartFractionOfRoot(root);
+            let halfFrac = 0.5 * node.getFractionOfRoot(root);
+            return (index + 0.5) * ch.nodeDeltaFrac + (startFrac + halfFrac) * extraSpaceFrac;
+          }
         }
       } else {
         //method = weight
@@ -1496,33 +1503,33 @@ class MkTreeView extends MkGraphView {
         }
       }
     }
-    let nodeWidth = 4 * radius;
-    let nodeHeight = 2 * radius;
 
-    //TODO optimize view for sparce view: radius based on density;
+
+    let shouldLabel = nodeHeight >= MIN_NODE_HEIGHT_FOR_LABEL;
+
+    //TODO optimize view for sparce view: height based on density;
     //search: Gadiyaram, Hariprasad [contractor] <hgadiyaram_contractor@mtb.com>; Selvaraj, Eujish [contractor] <eselvaraj_contractor@mtb.com>; Mangla, Shashank [contractor] <smangla_contractor@mtb.com>; Black, Brian <bblack@mtb.com>; Sharma, Anoop  [contractor] <asharma10_contractor@mtb.com>; Tomar, Vivek [contractor] <vtomar_contractor@mtb.com>; Foremiak, Lynn <lforemiak@mtb.com>; Aguilera, Ivan <iaguilera@mtb.com>; Narayana, Lakshmi [contractor] <lnarayana_contractor@mtb.com>; Manjunatha, Sandeep [contractor] <smanjunatha_contractor@mtb.com>; Duvvuru, Avinash  [contractor] <aduvvuru2_contractor@mtb.com>
+    //search: Baker, Dean <dbaker@mtb.com>; Weber, Pearce <pweber@mtb.com>; Dornan, Stephen <sdornan@mtb.com>; Zochowski, Mark <mzochowski@mtb.com>; Siwajek, Anita [contractor] <asiwajek_contractor@mtb.com>; Tamang, Bibek [contractor] <btamang_contractor@mtb.com>; Marshall V, Arthur <amarshall1@mtb.com>; Stoj, Leeanne <lstoj@mtb.com>; Obermeyer, Bob <robermeyer1@mtb.com>; Duffy, Joni <jduffy2@mtb.com>; Reggie, Michelle <mreggie@mtb.com>; Sathish, Swathi [contractor] <ssathish_contractor@mtb.com>; Poliachik, Maxx <mpoliachik@mtb.com>; Smith, Nicole <nsmith3@mtb.com>; Kolarich, Anne [contractor] <akolarich_contractor@mtb.com>; 'angela.lewis@levvel.io'; Cain, Nathan <ncain@mtb.com>; Beiter, Al <abeiter@mtb.com>; Guntoorkar, Prajakta [contractor] <pguntoorkar1_contractor@mtb.com>; Laurin, Jon <JLAURIN@mtb.com>; Olin, Dave <dolin@mtb.com>; Aviles, John <jcaviles@mtb.com>; 'lev.shulman@levvel.io'; Mohan, Arjun <amohan@mtb.com>; Becker, Ken <kbecker@mtb.com>; Furman, Kris <kfurman@mtb.com>; Czamara, Scott <sczamara@mtb.com>; Fovel Jr, BRIAN <bfovel@mtb.com>; Mitchell, John [contractor] <jmitchell1_contractor@mtb.com>; McCombie, Jason <jmccombie@mtb.com>; DeFries, Ryan <rdefries@mtb.com>; Konieczka, Brian <bkonieczka@mtb.com>; Strong, Megan <MIACUZZO@mtb.com>; Faro, Joseph <jfaro@mtb.com>; Ulanday, Jerry <rulanday@mtb.com>; Sedor, Daniel  [contractor] <dsedor_contractor@mtb.com>; Lane, Rich [contractor] <rlane_contractor@mtb.com>; Spring, Alan <aspring@mtb.com>; Dave Thomason <dave.thomason@levvel.io>; Pillai, Unni [contractor] <upillai_contractor@mtb.com>; Phil Mork <phil.mork@levvel.io>; Ward, Dave <dward@mtb.com>; Mani, Saravanan [contractor] <smani_contractor@mtb.com>; Nakamura, Takashi <tnakamura@mtb.com>; Zaiz, Zen [contractor] <zzaiz_contractor@mtb.com>; Selvaraj, Eujish [contractor] <eselvaraj_contractor@mtb.com>; Wolford, John <jwolford1@mtb.com>; Rice, Michael [contractor] <mrice1_contractor@mtb.com>; Komorowski, Matthew  [contractor] <mkomorowski_contractor@mtb.com>; 'tsyeed@mtb.com.'
+    //filter to: treasury
+    //filter to: enterprise services
+    //search: guru
     //TODO make this return type a LevelView class, and make a NodeView class;
     return {
-      position: function(node) {
-        const LABEL_SIZE_FACTOR = 2;
-        const LABEL_SIZE_DEFAULT = 10;
+      position: (node) => {
         let pathFrac = f(node);
 
-        let labelSize = (nodeHeight * LABEL_SIZE_FACTOR > LABEL_SIZE_DEFAULT)
-          ? LABEL_SIZE_DEFAULT
-          : nodeHeight*LABEL_SIZE_FACTOR;
         return {
           node: node,
-          hasFocus: view.state.focusNodes.includes(node),
-          label: nodeHeight > 8,
-          labelSize: labelSize,
+          hasFocus: this.state.focusNodes.includes(node),
+          label: shouldLabel,
+          labelSize: LABEL_SIZE_DEFAULT,
 
           pathFrac: pathFrac,//used for anchoring child node
 
           width: nodeWidth,
           height: nodeHeight,
-          edgeOffsetX: (isRootInCorner || isRootOnLeft) ? nodeWidth/2 : 0,
-          edgeOffsetY: (isRootInCorner || !isRootOnLeft) ? nodeHeight/2 : 0,
+          edgeOffsetX: (rootPosition === 'corner' || rootPosition === 'left') ? nodeWidth/2 : 0,
+          edgeOffsetY: (rootPosition === 'corner' || rootPosition !== 'left') ? nodeHeight/2 : 0,
           x: margins.l + nodeWidth/2 + xLineStart + xLineChange * pathFrac,
           y: margins.t + nodeHeight/2 + yLineStart + yLineChange * pathFrac
         }
@@ -1552,33 +1559,38 @@ class MkTreeView extends MkGraphView {
     let nodes = {};
 
     //TODO move here if mounted left, go up
-    let isRootOnLeft = true;
-    let isRootInCorner = false;
+    let rootPosition = 'left';
 
     let dimensions = this.getDimensions();
     let root = this.state.root;
     root.weigh();
     let ancestors = root.getAncestors();
 
-    let maxRadius = 30;
-    let ancestorRadius = 30;//TODO make this larger
-    let margin = maxRadius;
+    let maxLines = 4; //TODO get this from view state
+    let ancestorRadius = 24;//TODO get this based on maxLines
+    let margin = ancestorRadius;
     let margins = {
       l: margin,
       r: margin,
-      t: margin + ((isRootOnLeft || ancestors.length == 0) ? 0 : ancestorRadius * 2.5),
+      t: margin + ((rootPosition === 'left' || ancestors.length == 0) ? 0 : ancestorRadius * 2.5),
       b: margin
     };
 
     let child = root;
-    let maxLevelLength = 0;
+
+    let levelArray = []
     while (child) {
       //unfilter at root level
       let levelNodes = child.getLevelNodes(root, child === root);
-      maxLevelLength = levelNodes.length > maxLevelLength ? levelNodes.length : maxLevelLength;
-      let level = child.getRootDistance(root);
-      child = null;
-      let levelPath = this.levelPath(dimensions, margins, level, levelNodes, root.getMaxDepth()+1, maxRadius, maxLevelLength, nodes);
+      levelArray.push(levelNodes);
+      let parent = levelNodes.find(node=>node.getChildren().length > 0);
+      child = parent ? parent.getChildren()[0] : null;
+    }
+
+    let ch = this.getCharacteristic(levelArray, maxLines, dimensions, margins, rootPosition);
+    for (let level = 0; level < levelArray.length; level++) {
+      let levelNodes = levelArray[level];
+      let levelPath = this.levelPath(ch[level], dimensions, margins, levelNodes, nodes, rootPosition);
 
       let lastParent;
       let lastColor;
@@ -1588,9 +1600,6 @@ class MkTreeView extends MkGraphView {
         let nodeView = levelPath.position(node);
         let prevNodeView = lastNodeView;
         lastNodeView = nodeView;
-        if (!child && node.getChildren().length > 0) {
-          child = node.getChildren()[0];
-        }
         nodes[node.getId()] = nodeView;
         if (!node.isRoot(root) && node.getParent(root).getId() in nodes) {
           //node has parent
@@ -1612,24 +1621,24 @@ class MkTreeView extends MkGraphView {
         lastNonHidden = nodes[node.getId()];
         lastNonHidden.delegate = lastParent;
       });
-      //debug('level summary', levelNodes.length, levelNodes.filter(n=>(n.getChildren().length > 0)).length);
     }
 
     let last = nodes[root.getId()];
 
     nodes = Object.values(nodes);
+    let nodeHeight = ancestorRadius * 2;
+    let nodeWidth = ancestorRadius * 4;
     ancestors.forEach((node, i) => {
       let n = {
         node: node,
         label: true,
         labelSize: 10,
-        height: ancestorRadius * 2,
-        width: ancestorRadius * 4,
-        isAncestor: true,
-        edgeOffsetX: (isRootInCorner || !isRootOnLeft) ? ancestorRadius : 0,
-        edgeOffsetY: (isRootInCorner || isRootOnLeft) ? ancestorRadius : 0,
-        x: last.x + (isRootOnLeft || (last.node.getId() === root.getId()) ? 0 : (2.5 * ancestorRadius)),
-        y: last.y - (isRootOnLeft || (last.node.getId() === root.getId()) ? (2.5 * ancestorRadius) : 0)
+        width: nodeWidth,
+        height: nodeHeight,
+        edgeOffsetX: (rootPosition !== 'left') ? nodeWidth/2 : 0,
+        edgeOffsetY: (rootPosition === 'left') ? nodeHeight/2 : 0,
+        x: last.x + (rootPosition === 'left' || (last.node.getId() === root.getId()) ? 0 : (1.1 * nodeWidth)),
+        y: last.y - (rootPosition === 'left' || (last.node.getId() === root.getId()) ? (1.2 * nodeHeight) : 0)
       }
       nodes.push(n)
       edges.push([n, last])
@@ -1641,6 +1650,85 @@ class MkTreeView extends MkGraphView {
       edgeViews: edges
     }
   }
+
+  getCharacteristic(levelArray, maxLines, dimensions, margins, rootPosition) {
+    if (rootPosition === 'corner') {
+      return getCharacteristicCorner();
+    } else if (rootPosition === 'top') {
+      return getCharacteristicTop();
+    }
+
+    let widthFactor = 2; //TODO change this if we want square nodes for certain root positions;
+    let maxNodeHeight = maxLines * LABEL_SIZE_DEFAULT * LINE_HEIGHT_FACTOR;
+    let maxNodeWidth = widthFactor * maxNodeHeight;
+
+    //setup
+    let w = dimensions.graphWidth - margins.l - margins.r;
+    let h = dimensions.graphHeight - margins.t - margins.b;
+
+    let lineLength = h; // pixes for line dimension
+    let levelSpace = w; // pixels for levels dimension
+
+    const NODE_SPACE_FACTOR = 1.2; // we want at least 30% space between nodes if we can get it.
+    const LEVEL_SPACE_MIN = 20;
+
+    let c = {}
+    let levelLength = 0
+    levelArray.forEach((levelNodes, level) => {
+      levelLength = Math.max(levelNodes.length, levelLength);
+      let linesPerNode = Math.min(
+        maxLines,
+        Math.max(
+          Math.floor(lineLength / (levelLength * LABEL_SIZE_DEFAULT * LINE_HEIGHT_FACTOR * NODE_SPACE_FACTOR)),
+          1
+        )
+      )
+      c[level] = {
+        linesPerNode: linesPerNode,
+        levelLength: levelLength
+      };
+    })
+
+    let extraLevelSpace = (levels, levelSpace) => {
+      let minSpaceBetweenLevels = (levels.length - 1) * LEVEL_SPACE_MIN;
+      let totalWidthOfLevels = Object.values(c).map(ch => ch.linesPerNode).reduce((acc, l) => (acc + l * widthFactor * LABEL_SIZE_DEFAULT * LINE_HEIGHT_FACTOR), 0)
+      return levelSpace - totalWidthOfLevels - minSpaceBetweenLevels;
+    }
+
+    let extraSpaceDepth = extraLevelSpace(levelArray, levelSpace);
+    while (extraSpaceDepth < 0) {
+      let keyToDecrement = Object.keys(c).find(key => c[key].linesPerNode > 1)
+      if (typeof keyToDecrement !== 'undefined') {
+        c[keyToDecrement].linesPerNode = c[keyToDecrement].linesPerNode - 1;
+      } else {
+        break;
+      }
+      extraSpaceDepth = extraLevelSpace(levelArray, levelSpace);
+    }
+
+    const LEVEL_SPACE_FACTOR = 0.7;
+    let oneNodeSublevels = levelArray.map(arr => arr.filter(n=>n.isIncludedSelf()).length).filter((len, i) => len <= 1 && i > 0).length;
+
+    let extraSpaceAfter = (level) => {
+      let levelsToSpace = (level >= oneNodeSublevels && extraSpaceDepth > 0)
+        ? Math.pow(LEVEL_SPACE_FACTOR, level - oneNodeSublevels)
+        : 0;
+      return levelsToSpace * extraSpaceDepth * (1 - LEVEL_SPACE_FACTOR)/(1 - Math.pow(LEVEL_SPACE_FACTOR, levelArray.length));
+    }
+    let offset = 0;
+    for (let level in c) {
+      c[level].height = (c[level].linesPerNode * LINE_HEIGHT_FACTOR) * LABEL_SIZE_DEFAULT;
+      c[level].width = c[level].height * widthFactor;
+      c[level].extraSpace = lineLength - c[level].height * c[level].levelLength * NODE_SPACE_FACTOR;
+      c[level].nodeDeltaFrac = c[level].height * NODE_SPACE_FACTOR / lineLength;
+      c[level].lineLength = lineLength;
+      c[level].offset = offset;
+      offset += c[level].width + LEVEL_SPACE_MIN + extraSpaceAfter(parseInt(level));
+    }
+    debug('characteristic', c)
+    return c;
+  }
+
   overlaps(nv1, nv2) {
     let overlapFactor = 0.8;
     let x1 = Math.min(nv1.x, nv2.x);
