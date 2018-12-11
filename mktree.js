@@ -397,6 +397,7 @@ const LINE_HEIGHT_FACTOR = 1.2; //line spacing
 const LABEL_SIZE_FACTOR = 2;
 const LABEL_SIZE_DEFAULT = 10;
 const MIN_NODE_HEIGHT_FOR_LABEL = 8;
+const FOCUS_FILTER_NAME = 'Search Results';
 
 class Stateful {
   setState(newState) { //TODO extract this to super class
@@ -450,53 +451,65 @@ class Stateful {
 }
 
 class MkGraphLegend extends Stateful {
-  constructor(props, graph) {
+  constructor(props, parentElement = document.body) {
     super();
-    let categories = props.categories;
-    let attributeKey = props.attributeKey;
 
-    this.graph = graph;
     this.state = {
-      categories: props.categories || {},
-      attributeKey: props.attributeKey,
-      selected: props.selected || null
+      graphView: props.graphView,
+      filters: props.filters || {},
+      colors: props.colors || {},
+      showColors: props.colors && Object.keys(props.colors).length > 0,
+      selected: props.selected || [],
+      multiSelect: 'multiSelect' in props ? props.multiSelect : true,
+      or: 'or' in props ? props.or : true
     }
-    /*create category filters
-    Object.keys(categories).sort().forEach(category=>{
-      let filter = (node => attributeKey in node.getAttributes() && node.getAttributes()[attributeKey].toLowerCase() === category)
-      filters[PRIME_CATEGORY + '.' + category] = filter;
-    })
-    */
-    this.legend = d3.select(document.body).append('div').attr('class', 'legend');
 
-    this.render = this.render.bind(this);
+    this.legend = d3.select(parentElement).append('div').attr('class', 'legend');
+
     this.height = this.height.bind(this);
-    this.getSelectionFilter = this.getSelectionFilter.bind(this);
-    this.getSelectionName = this.getSelectionName.bind(this);
+    this.bgColor = this.bgColor.bind(this);
+    this.textColor = this.textColor.bind(this);
+    this.render = this.render.bind(this);
+    this.getSelectionFilters = this.getSelectionFilters.bind(this);
   }
+
   height() {
     return this.legend.node().getBoundingClientRect().height
   }
-  bgColor(color) {
-    return Array.isArray(color) ? color[0] : color;
+  bgColor(category) {
+    if (category in this.state.colors) {
+      let color = this.state.colors[category];
+      return Array.isArray(color) ? color[0] : color;
+    } else {
+      return '#444';
+    }
   }
-  textColor(color) {
-    return Array.isArray(color) ? color[1] : MkGraphView.contrastColor(color);
+  textColor(category) {
+    if (category in this.state.colors) {
+      let color = this.state.colors[category];
+      return Array.isArray(color) ? color[1] : MkGraphView.contrastColor(color);
+    } else {
+      return '#EEE'
+    }
   }
   render() {
-    let d3entries = this.legend.selectAll("div.legend_entry").data(Object.keys(this.state.categories).sort());
+    let d3entries = this.legend.selectAll("div.legend_entry").data(Object.keys(this.state.filters).sort());
 
     d3entries.exit().remove();
 
     let divs = d3entries.enter().append("div")
       .attr("class", 'legend_entry')
     .merge(d3entries)
-      .style('color',            category=>(category === this.state.selected) ? this.textColor(this.state.categories[category]) : null)
-      .style('background-color', category=>(category === this.state.selected) ? this.bgColor(this.state.categories[category]) : null);
+      .style('color',            category=>this.state.selected.includes(category) ? this.textColor(category) : null)
+      .style('background-color', category=>this.state.selected.includes(category) ? this.bgColor(category) : null);
 
     d3entries = divs.selectAll('span')
       .data((category) => {
-        return [[category, this.bgColor(this.state.categories[category])], [category]]
+        if (this.state.showColors) {
+          return [[category, this.bgColor(category)], [category]]
+        } else {
+          return [[category]]
+        }
       })
     d3entries
       .enter()
@@ -506,19 +519,32 @@ class MkGraphLegend extends Stateful {
           .style('background-color', d=>(d.length > 1) ? d[1] : null)
           .on('click', d=>{
             d3.event.stopPropagation();
+            let selected = this.state.selected.filter(()=>true);
+            if (selected.includes(d[0])) {
+              selected = selected.filter(elt=>elt !== d[0])
+            } else if (this.state.multiSelect) {
+              selected.push(d[0]);
+            } else {
+              selected = [d[0]];
+            }
             this.setState({
-              selected: d[0] === this.state.selected ? null : d[0]
+              selected: selected
             });
-            this.graph.render(['filtersOn'])
+            this.state.graphView.render(['filtersOn']);
           })
   }
-  getSelectionFilter() {
-    if (this.state.selected) {
-      return (node => this.state.attributeKey in node.getAttributes() && node.getAttributes()[this.state.attributeKey].toLowerCase() === this.state.selected)
+  getSelectionFilters() {
+    let filters = {}
+    if (this.state.or && this.state.selected.length > 0) {
+      let filterName = this.state.selected.join(' OR ');
+      let filterList = this.state.selected.map(sel=>this.state.filters[sel]);
+      filters[filterName] = (node) => filterList.some((filter) => filter(node));
+    } else {
+      this.state.selected.forEach(selected=>{
+        filters[selected] = this.state.filters[selected];
+      })
     }
-  }
-  getSelectionName() {
-    return this.state.selected;
+    return filters;
   }
 }
 
@@ -537,6 +563,14 @@ class MkGraphInfo {
 
     this.titleBox = this.sideBar.append('header')
     this.titleBox.append('h2').attr('id', 'info_box_title');
+    
+    let filterContainer = this.titleBox.append('div');
+    this.filterList = new MkGraphLegend({
+      filters: this.graphView.state.filters,
+      or: false,
+      graphView: this.graphView,
+      selected: this.graphView.state.filtersOn
+    }, filterContainer.node());
 
     this.infoBoxBody = this.sideBar.append('div').attr('class', 'info_box_body');
     this.searchBox = this.infoBoxBody.append('input').attr('class', 'info_element')
@@ -574,6 +608,7 @@ class MkGraphInfo {
 
   //called by graph.render
   updateFocus(shouldRedraw = true) {
+    this.filterList.render();
     debug('start infoBox');
     let view = this.graphView;
     let root = view.state.root;
@@ -623,21 +658,8 @@ class MkGraphInfo {
         title: view.state.title,
       });
       //TODO consider possibility that this is a failed search
-      //todo fix this for case that 'focus' filter is on
+      //todo fix this for case that FOCUS_FILTER_NAME filter is on
       view.appendGraphData(info);
-      Object.keys(view.state.filters).forEach((filterName, index)=>{
-        let filterKey = 'filter (' + index + ')';
-        if (!view.state.filtersOn.includes(filterName)) {
-          info.addEntry(filterKey, filterName, function(){
-            view.addFilter(filterName);
-          });
-        } else {
-          info.addEntry(filterKey, filterName + ' (remove)', function(){
-            view.removeFilter(filterName);
-          });
-        }
-      })
-
     }
 
     //Set Title
@@ -650,18 +672,16 @@ class MkGraphInfo {
     if (focusNodesNotVisible.length > 0) {
       options.push([plural ? 'expand graph to all search results' : 'move to search result', function(){
         let newState = view.getStateToUnhideNodes(focusNodesNotVisible)
-        newState.filtersOn = view.state.filtersOn.filter(filterName=>!excludingFilters.includes(filterName));
         view.setState(newState);
       }]);
     }
-    if (view.state.filtersOn.includes('focus')) {
+    if (view.state.filtersOn.includes(FOCUS_FILTER_NAME)) {
       options.push(['don\'t limit to search results', function(){
-        view.removeFilter('focus');
+        console.log('TODO figure out how to turn filters on and off. all filtering things must register with graph?')
       }]);
     } else if (plural) {
       options.push(['only show search results', function(){
-        view.addFilter('focus');
-        d3.event.preventDefault();
+        console.log('TODO')
       }]);
     }
     var link = this.titleBox.selectAll("a.info_box_filter").data(options);
@@ -675,7 +695,6 @@ class MkGraphInfo {
         d3.event.stopPropagation();
         d[1]();
       });
-    //var filterLink = this.sideBar.select("a#info_box_title").data([info.state.title]);
 
     let d3entries = this.infoBox.selectAll("tr").data(Object.keys(info.getEntries()));
 
@@ -766,8 +785,8 @@ class MkGraphView extends Stateful {
     this.parentElement = parentElement;
     let d3parent = d3.select(parentElement);
     this.parentElement.innerHTML = '';
-    this.state.filters['focus'] = function(node) {
-      return view.state.focusNodes.length == 0 || view.state.focusNodes.includes(node);
+    this.state.filters[FOCUS_FILTER_NAME] = function(node) {
+      return view.state.focusNodes.includes(node);
     };
 
     let view = this;
@@ -783,14 +802,19 @@ class MkGraphView extends Stateful {
       .on('mouseout', d=>view.hover());
     this.container = this.svg.append('g');
 
-    //sidebar stuff
     this.graphInfoView = new MkGraphInfo(this, this.parentElement);
-    //end sidebar stuff
 
+    let filters = {}
+    for (let category in props.colorByAttributeValue) {
+      filters[category] = (node => props.colorAttributeKey in node.getAttributes() && category === node.getAttributes()[props.colorAttributeKey].toLowerCase());
+    }
+
+    let legendContainer = d3parent.append("div").attr("id", 'legend_container')
     this.legend = new MkGraphLegend({
-      categories: props.colorByAttributeValue,
-      attributeKey: props.colorAttributeKey
-    }, this);
+      colors: props.colorByAttributeValue,
+      filters: filters,
+      graphView: this
+    }, legendContainer.node());
 
     let tooltip = d3parent.append("span")
       .attr("id", 'tooltip');
@@ -1027,15 +1051,12 @@ class MkGraphView extends Stateful {
       debug('resize done');
     }
 
-    let activeFilters = {};
-    this.state.filtersOn.forEach(filterName=> {
-      activeFilters[filterName] = this.state.filters[filterName];
-    })
+    let activeFilters = this.graphInfoView.filterList.getSelectionFilters();
 
     this.legend.render();
-    let legendFilter = this.legend.getSelectionName();
-    if (legendFilter) {
-      activeFilters[legendFilter] = this.legend.getSelectionFilter();
+    let legendFilters = this.legend.getSelectionFilters();
+    for (let filterName in legendFilters) {
+      activeFilters[filterName] = legendFilters[filterName];
     }
     this.getGraph().setFilters(activeFilters);
 
@@ -1050,21 +1071,6 @@ class MkGraphView extends Stateful {
       }, 10);
     } else {
       this.loader.style('display', 'none');
-    }
-  }
-
-  addFilter(name) {
-    if (!this.state.filtersOn.includes(name)) {
-      this.state.filtersOn.push(name);
-      this.render(['filtersOn']);
-    }
-  }
-
-  //convenience method.
-  removeFilter(name) {
-    if (this.state.filtersOn.includes(name)) {
-      this.state.filtersOn.splice(this.state.filtersOn.indexOf(name), 1);
-      this.render(['filtersOn']);
     }
   }
 
@@ -1303,7 +1309,7 @@ class MkGraphView extends Stateful {
       })
       .style('font-size', d => d.labelSize)
       .style('fill', d=> {
-        if (d.width >= MIN_RADIUS_CENTER_TEXT && d.node.isIncludedSelf()) {
+        if (d.width >= MIN_RADIUS_CENTER_TEXT && (d.node.isIncludedSelf() || d.hasFocus)) {
           if (typeof this.state.colorFunction.textColor === 'function') {
             return this.state.colorFunction.textColor(d);
           } else {
@@ -1705,9 +1711,10 @@ class MkTreeView extends MkGraphView {
     }
 
     const LEVEL_SPACE_FACTOR = 0.7;
-    let oneNodeSublevels = levelArray.map(arr => arr.filter(n=>n.isIncludedSelf()).length).filter((len, i) => len <= 1 && i > 0).length;
+    let oneNodeSublevels = levelArray.map(arr => arr.filter(n=>n.isIncludedSelf()).length).findIndex((len, i) => len > 1 && i > 0);
+    oneNodeSublevels = Math.max(oneNodeSublevels, 1);
 
-    let extraSpaceAfter = (level) => {
+    let extraSpaceBefore = (level) => {
       let levelsToSpace = (level >= oneNodeSublevels && extraSpaceDepth > 0)
         ? Math.pow(LEVEL_SPACE_FACTOR, level - oneNodeSublevels)
         : 0;
@@ -1721,7 +1728,7 @@ class MkTreeView extends MkGraphView {
       c[level].nodeDeltaFrac = c[level].height * NODE_SPACE_FACTOR / lineLength;
       c[level].lineLength = lineLength;
       c[level].offset = offset;
-      offset += c[level].width + LEVEL_SPACE_MIN + extraSpaceAfter(parseInt(level));
+      offset += c[level].width + LEVEL_SPACE_MIN + extraSpaceBefore(parseInt(level) + 1);
     }
     debug('characteristic', c)
     return c;
