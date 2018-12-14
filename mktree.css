@@ -36,7 +36,9 @@ svg {
 
 /********************* LEGEND ********************/
 #legend_container {
+  box-shadow: -3px -1px 2px #bbbbbb;
   position: absolute;
+  z-index: 2;
   bottom: 0;
   width: 67%;
 }
@@ -61,6 +63,7 @@ svg {
 
 /********************* INFO BOX ********************/
 #info_box {
+  box-shadow: 0px -1px 5px #bbbbbb;
   display: flex;
   flex-direction: column;
   flex-wrap: nowrap;
@@ -72,6 +75,11 @@ svg {
   /* either height or bottom: bottom: 10px; height: 100%;*/
   width: 33%;
   background-color: #f5f5f5;
+}
+
+#info_box header {
+  padding: 1em 1em 0 1em;
+    flex-shrink: 0;
 }
 .hidden_info_box #info_box{
   right: -33%;
@@ -85,18 +93,33 @@ svg {
   top: 0px;
   right: 100%;
   background-color: #f5f5f5;
+    box-shadow: -2px 2px 3px -1px #bbbbbb;
 }
 #info_box .info_element {
-  overflow-y: scroll;
+  padding: 1em 0;
   background-color: #fefefe;
-  margin-bottom: 10px;
   width: 100%;
+}
+#info_box input {
+  padding: 0.5em 0.5em;
+  margin: 0.5em 0;
   box-sizing: border-box;
-  padding: 5px;
   border: 1px solid #444;
+  width: 100%;
+}
+#info_box .search_message {
+  font-weight: bold;
+  margin: 0.5em;
+  display: inline-block;
+}
+#info_box .search_options {
+  display: inline-block;
+  font-weight: bold;
+  font-size: 0.8em;
 }
 .info_box_filter {
-  padding-left: 10px;
+  padding-left: 0.5em;
+  text-decoration: none;
 }
 
 #info_box table {
@@ -124,14 +147,6 @@ svg {
   cursor: pointer;
 }
 
-#info_box {
-    position: absolute;
-}
-
-#info_box header {
-  padding: 1em 1em 0 1em;
-    flex-shrink: 0;
-}
 #info_box header h2 {
   padding: 0;
   margin: 0;
@@ -141,11 +156,15 @@ svg {
     flex-grow: 1;
     overflow: auto;
     min-height: 2em;
-    padding: 0.5em 1em;
+    padding: 0.5em 1em 1em 1em;
+  background-color: #e5e5e5;
 }
 #info_box footer{
-    padding: 1em;
-    flex-shrink: 0;
+  padding: 1em;
+  flex-shrink: 0;
+  box-shadow: 0px -1px 5px #bbbbbb;
+  z-index: 2;
+  position: relative;
 }
 
 /********************* TOOLTIP ********************/
