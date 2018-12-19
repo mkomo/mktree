@@ -37,8 +37,8 @@ svg {
 /********************* LEGEND ********************/
 #legend_container {
   box-shadow: -3px -1px 2px #bbbbbb;
-  position: absolute;
   z-index: 2;
+  position: absolute;
   bottom: 0;
   width: 67%;
 }
@@ -62,6 +62,14 @@ svg {
 }
 
 /********************* INFO BOX ********************/
+.close_button {
+  position: absolute;
+  top: 1em;
+  right: 1em;
+  padding: 0 0.2em;
+  cursor: pointer;
+  font-weight: bold;
+}
 #info_box {
   box-shadow: 0px -1px 5px #bbbbbb;
   display: flex;
@@ -93,7 +101,7 @@ svg {
   top: 0px;
   right: 100%;
   background-color: #f5f5f5;
-    box-shadow: -2px 2px 3px -1px #bbbbbb;
+  box-shadow: -2px 2px 3px -1px #bbbbbb;
 }
 #info_box .info_element {
   padding: 1em 0;
@@ -165,6 +173,8 @@ svg {
   box-shadow: 0px -1px 5px #bbbbbb;
   z-index: 2;
   position: relative;
+  max-height: 66%;
+  overflow-y: scroll;
 }
 
 /********************* TOOLTIP ********************/
