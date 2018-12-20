@@ -404,7 +404,7 @@ const MIN_NODE_HEIGHT_FOR_LABEL = 8;
 const SEARCH_RESULT_FILTER_NAME = 'Limit to Search Results';
 
 class Stateful {
-  setState(newState) { //TODO extract this to super class
+  setState(newState) {
     let changed = [];
     for (let key in newState) {
       if (!(key in this.state)) {
@@ -415,13 +415,16 @@ class Stateful {
       }
     }
     if (changed.length > 0) {
-      let queryState=this.getQueryState();
-      let queryString = Object.keys(queryState)
-        .filter(key=>(queryState[key] != null && queryState[key].length != 0))
-        .map(key=>(encodeURIComponent(key) + '=' + encodeURIComponent(queryState[key]))).join('&');
-      debug('setState', queryString);
       this.render(changed);
     }
+  }
+  
+  updateQueryString() {
+    let queryState=this.getQueryState();
+    let queryString = Object.keys(queryState)
+      .filter(key=>(queryState[key] != null && queryState[key].length != 0))
+      .map(key=>(encodeURIComponent(key) + '=' + encodeURIComponent(queryState[key]))).join('&');
+    debug('setState', this.constructor.name, queryString);
   }
 
   getQueryState() {
@@ -461,6 +464,7 @@ class MkGraphLegend extends Stateful {
     this.state = {
       graphView: props.graphView,
       filters: props.filters || {},
+      filtersHidden: props.filtersHidden || [],
       colors: props.colors || {},
       showColors: props.colors && Object.keys(props.colors).length > 0,
       selected: props.selected || [],
@@ -500,7 +504,8 @@ class MkGraphLegend extends Stateful {
     }
   }
   render() {
-    let d3entries = this.legend.selectAll("div.legend_entry").data(Object.keys(this.state.filters).sort());
+    let d3entries = this.legend.selectAll("div.legend_entry")
+      .data(Object.keys(this.state.filters).filter(f=>!this.state.filtersHidden.includes(f)).sort());
 
     d3entries.exit().remove();
 
@@ -522,8 +527,9 @@ class MkGraphLegend extends Stateful {
       .enter()
           .append('span')
       .merge(d3entries)
-          .html(d => (d.length > 1 ? '&nbsp;' : d[0]))
+          .html(d => (d.length > 1 ? '&nbsp;' : (d[0].trim().length > 0 ? d[0] : '[empty]')))
           .style('background-color', d=>(d.length > 1) ? d[1] : null)
+          .style('color', d=>(d.length === 1 && d[0].trim().length === 0 && !this.state.selected.includes(d[0])) ? '#999' : null)
           .on('click', d=>{
             d3.event.stopPropagation();
             this.toggleFilter(d[0])
@@ -626,11 +632,17 @@ class MkGraphSearch {
     this.titleHeader = this.titleBox.append('h2').attr('id', 'info_box_title');
     
     let filterContainer = this.titleBox.append('div');
+    
+    let filters = props.filters;
+    filters[SEARCH_RESULT_FILTER_NAME] = (node) => {
+      return graphView.state.searchResultNodes.includes(node);
+    };
     this.filterList = new MkGraphLegend({
-      filters: this.graphView.state.filters,
+      filters: filters,
+      filtersHidden: [SEARCH_RESULT_FILTER_NAME],
       or: false,
       graphView: this.graphView,
-      selected: this.graphView.state.filtersOn
+      selected: props.filtersOn
     }, filterContainer.node());
 
     this.search = this.search.bind(this);
@@ -664,8 +676,8 @@ class MkGraphSearch {
     //TODO find quotes so that it's easy to search for first or last names. Also score search based on closeness
     //get separate terms in lowercase
     let criteria = criteriaString.toLowerCase().split(';');
-    //trim criteria
-    criteria = criteria.map(t=>t.trim())
+    //trim criteria; filter empties
+    criteria = criteria.map(t=>t.trim()).filter(t=>t !== '');
     //email special case TODO move this out into some settable search functions
     criteria = criteria.map(e=>(e.includes('<') ? e.split('<')[1].split('>')[0]: e))
     //split into bundled terms
@@ -776,7 +788,6 @@ class MkGraphSearch {
       searchInfo = new InfoBox({
         title: 'found no results',
       });
-      //todo fix this for case that SEARCH_RESULT_FILTER_NAME filter is on
     }
     
     //TODO use d3 select for the table instead of clearing every time
@@ -849,9 +860,7 @@ class MkGraphView extends Stateful {
       },
       search: props.search || null,
       searchResultNodes: props.searchResultNodes || [],
-      infoBoxNode: props.infoBoxNode || null,
-      filters: props.filters || {},
-      filtersOn: props.filtersOn || []
+      infoBoxNode: props.infoBoxNode || null
     }
     
     if (!this.state.colorFunction) {
@@ -865,9 +874,6 @@ class MkGraphView extends Stateful {
     this.parentElement.innerHTML = '';
 
     this.filterers = [];
-    this.state.filters[SEARCH_RESULT_FILTER_NAME] = function(node) {
-      return view.state.searchResultNodes.includes(node);
-    };
 
     let view = this;
     this.svg = d3parent.append("svg")
@@ -994,31 +1000,6 @@ class MkGraphView extends Stateful {
     return this.state.graph;
   }
 
-  /**
-   * test states
-    rootId=EMTGJNA&filtersOn=humans //spread for huge number of child nodes
-    rootId=TDEVY67&filtersOn=humans //crowd childless nodes and center on parent node
-   */
-  setState(newState) {
-    let changed = [];
-    for (let key in newState) {
-      if (!(key in this.state)) {
-        console.error('non-existant key', key, this.state, newState);
-      } else if (! this.isEqual(this.state[key], newState[key])) {
-        changed.push(key);
-        this.state[key] = newState[key];
-      }
-    }
-    if (changed.length > 0) {
-      let queryState=this.getQueryState();
-      let queryString = Object.keys(queryState)
-        .filter(key=>(queryState[key] != null && queryState[key].length != 0))
-        .map(key=>(encodeURIComponent(key) + '=' + encodeURIComponent(queryState[key]))).join('&');
-      debug('setState', queryString);
-      this.render(changed);
-    }
-  }
-
   shouldRedraw(stateChanged) {
     const GRAPH_AFFECTING_STATE = ["colorFunction", "label", "filters", "filtersOn", "dimensions"];
     let searchNodesNotVisible = this.state.searchResultNodes.some(node => {
@@ -1033,9 +1014,13 @@ class MkGraphView extends Stateful {
 
   appendGraphData(info) {
     let nodes = Object.values(this.state.graph.getNodes())
+    let nodesVisible = nodes.filter(node=>node.isIncludedSelf());
     info.addEntry('nodes total', nodes.length, nodes);
+    if (nodes.length !== nodesVisible.length) {
+      info.addEntry('nodes filtered', nodesVisible.length, nodesVisible);
+    }
   }
-  
+
   addFilterer(filterer) {
     this.filterers.push(filterer);
   }
@@ -1065,7 +1050,6 @@ class MkGraphView extends Stateful {
     let last = null;
 
     let nodes = Object.values(this.getGraph().getNodes()).filter(node=>node.isIncludedSelf());
-    window.c = this.state.colorFunction({node: nodes[0]});
     nodes.sort((a,b)=>(this.state.colorFunction({node: a}).toString().localeCompare(this.state.colorFunction({node: b}).toString())));
     nodes.forEach((node, i) => {
       if (y < dimensions.graphHeight - margins.t) {
@@ -1137,14 +1121,26 @@ class MkGraphView extends Stateful {
 
   getQueryState() {
     return Object.assign(super.getQueryState(), {
-      filtersOn: this.state.filtersOn.join(','),
+      filtersOn: Object.keys(this.updateFilterers()).join(','),
       search: this.state.search, //TODO get this from search box
       infoBoxNode: this.state.infoBoxNode ? this.state.infoBoxNode.getId() : null
     })
   }
 
+  updateFilterers() {
+    let activeFilters = {}
+
+    this.filterers.forEach(filterer=>{
+      filterer.render();
+      activeFilters = Object.assign(filterer.getSelectionFilters(), activeFilters)
+    })
+
+    return activeFilters;
+  }
+  
   //called by setState. also should be called when setState is not called but graph should be rerendered.
   render(changed) {
+    this.updateQueryString();
     debug('render', changed);
     //todo add loading spinner
     this.loader.style('display', 'inline-block');
@@ -1152,12 +1148,7 @@ class MkGraphView extends Stateful {
       this.resizeGraph(this.getDimensions());
     }
 
-    let activeFilters = {}
-
-    this.filterers.forEach(filterer=>{
-      filterer.render();
-      activeFilters = Object.assign(filterer.getSelectionFilters(), activeFilters)
-    })
+    let activeFilters = this.updateFilterers();
 
     this.getGraph().setFilters(activeFilters);
 
@@ -1891,8 +1882,8 @@ class InfoBox {
   constructor(props = {}) {
     this.state = {
       title: props.title || null,
+      limitedKeys: props.limitedKeys || null,
       entries: props.entries || {},
-      limitedKeys: props.limitedKeys || [],
       links: props.links || {}
     }
   }
@@ -1909,7 +1900,7 @@ class InfoBox {
   }
 }
 
-InfoBox.of = function(node, mainKey = null, parentKey = 'parent', childKey = 'children', descendentKey = 'descendents', dataKeySelectFunc = (keys=>keys), dataCleanFunc = ((val, key)=>val), limitedKeys = null) {
+InfoBox.of = function(node, mainKey = null, dataKeySelectFunc = (keys=>keys), limitedKeys = null, dataCleanFunc = ((val, key)=>val), parentKey = 'parent', childKey = 'children', descendentKey = 'descendents') {
   let title = (mainKey === null) ? node.getId() : node.getAttribute(mainKey).trim();
   let mainKeyLabel = (mainKey === null) ? 'id' : mainKey;
   let infoBox = new InfoBox({
