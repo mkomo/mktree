@@ -384,7 +384,7 @@ class MkTree extends MkGraph {
   constructor(props = {}) {
     super(props);
     this.state = Object.assign(this.state, {
-      root: props.root || null
+      rootId: props.rootId || null
     });
   }
 
@@ -404,6 +404,13 @@ const MIN_NODE_HEIGHT_FOR_LABEL = 8;
 const SEARCH_RESULT_FILTER_NAME = 'Limit to Search Results';
 
 class Stateful {
+  constructor(props) {
+    let hash = window.location.hash;
+    if (props && hash && hash.length > 0) {
+      Object.assign(props, this.getPropsFromParamString(hash.substr(1)))
+    }
+  }
+  
   setState(newState) {
     let changed = [];
     for (let key in newState) {
@@ -418,13 +425,21 @@ class Stateful {
       this.render(changed);
     }
   }
-  
+  //TODO change name to hashString
   updateQueryString() {
     let queryState=this.getQueryState();
     let queryString = Object.keys(queryState)
       .filter(key=>(queryState[key] != null && queryState[key].length != 0))
       .map(key=>(encodeURIComponent(key) + '=' + encodeURIComponent(queryState[key]))).join('&');
+    window.location = '#' + queryString;
     debug('setState', this.constructor.name, queryString);
+  }
+
+  getPropsFromParamString(queryString) {
+    return queryString.split('&') //split params
+        .map(param=>param.split('=') // split key values
+          .map(val=>decodeURIComponent(val))) //decode both key and value 
+        .reduce((acc, pair)=>Object.assign(acc, {[pair[0]] : pair[1]}), {}) //collect into an object
   }
 
   getQueryState() {
@@ -467,10 +482,13 @@ class MkGraphLegend extends Stateful {
       filtersHidden: props.filtersHidden || [],
       colors: props.colors || {},
       showColors: props.colors && Object.keys(props.colors).length > 0,
-      selected: props.selected || [],
       multiSelect: 'multiSelect' in props ? props.multiSelect : true,
       or: 'or' in props ? props.or : true
     }
+    
+    this.state.selected = props.filtersOn 
+        ? props.filtersOn.split(',').filter(filterName=> Object.keys(this.state.filters).includes(filterName))
+        : [];
     
     this.state.graphView.addFilterer(this);
 
@@ -554,7 +572,7 @@ class MkGraphLegend extends Stateful {
   getSelectionFilters() {
     let filters = {}
     if (this.state.or && this.state.selected.length > 0) {
-      let filterName = this.state.selected.join(' OR ');
+      let filterName = this.state.selected.join(',');
       let filterList = this.state.selected.map(sel=>this.state.filters[sel]);
       filters[filterName] = (node) => filterList.some((filter) => filter(node));
     } else {
@@ -584,16 +602,16 @@ class MkGraphInfo {
   
   render() {
     let view = this.graphView;
-    if (this.infoElement !== view.state.infoBoxNode) {
+    if (this.infoElement !== view.state.infoBoxNodeId) {
       this.shouldHide = false;
     }
-    if (this.infoElement !== view.state.infoBoxNode || this.shouldHide || !view.state.infoBoxNode) {
-      this.infoElement = view.state.infoBoxNode;
+    if (this.infoElement !== view.state.infoBoxNodeId || this.shouldHide || !view.state.infoBoxNodeId) {
+      this.infoElement = view.state.infoBoxNodeId;
       let info = new InfoBox();
       let shouldShowExit = false;
       if (this.infoElement && !this.shouldHide) {
         shouldShowExit = true;
-        info = view.state.infoBox(this.infoElement);
+        info = view.state.infoBox(view.getGraph().getNode(this.infoElement));
       } else {
         view.appendGraphData(info);
       }
@@ -620,6 +638,8 @@ class MkGraphSearch {
       searchSort: props.searchSort || null,
     }
 
+    //TODO if search is present in props, run search. move search and search result nodes here instead of View.
+    
     this.render = this.render.bind(this);
     this.left = this.left.bind(this);
     this.open = this.open.bind(this);
@@ -642,7 +662,7 @@ class MkGraphSearch {
       filtersHidden: [SEARCH_RESULT_FILTER_NAME],
       or: false,
       graphView: this.graphView,
-      selected: props.filtersOn
+      filtersOn: props.filtersOn,
     }, filterContainer.node());
 
     this.search = this.search.bind(this);
@@ -844,7 +864,8 @@ class MkGraphSearch {
 
 class MkGraphView extends Stateful {
   constructor(props, parentElement = document.body) {
-    super();
+    super(props);
+    console.log('props!', props);
     this.state = {
       graph: props.graph,
       title: props.title || 'Graph',
@@ -860,7 +881,7 @@ class MkGraphView extends Stateful {
       },
       search: props.search || null,
       searchResultNodes: props.searchResultNodes || [],
-      infoBoxNode: props.infoBoxNode || null
+      infoBoxNodeId: props.infoBoxNodeId || null
     }
     
     if (!this.state.colorFunction) {
@@ -881,7 +902,7 @@ class MkGraphView extends Stateful {
       .attr("tabindex", 1)
       .on('click', function(){
         view.setState({
-          infoBoxNode: null
+          infoBoxNodeId: null
         })
       })
     d3parent
@@ -901,6 +922,7 @@ class MkGraphView extends Stateful {
     this.legend = new MkGraphLegend({
       colors: props.colorByAttributeValue,
       filters: filters,
+      filtersOn: props.filtersOn,
       graphView: this
     }, legendContainer.node());
 
@@ -1083,7 +1105,7 @@ class MkGraphView extends Stateful {
   }
 
   nodeIsFocused(node) {
-    return (this.state.searchResultNodes.includes(node) || this.state.infoBoxNode === node)
+    return (this.state.searchResultNodes.includes(node) || this.state.infoBoxNodeId === node.getId())
   }
   
   hover(node, prefix = null, suffix = null) {
@@ -1110,7 +1132,7 @@ class MkGraphView extends Stateful {
   click(node, prefix = null, suffix = null) {
     d3.event.stopPropagation();
     this.setState({
-      infoBoxNode: node
+      infoBoxNodeId: node.getId()
     })
   }
 
@@ -1123,7 +1145,7 @@ class MkGraphView extends Stateful {
     return Object.assign(super.getQueryState(), {
       filtersOn: Object.keys(this.updateFilterers()).join(','),
       search: this.state.search, //TODO get this from search box
-      infoBoxNode: this.state.infoBoxNode ? this.state.infoBoxNode.getId() : null
+      infoBoxNodeId: this.state.infoBoxNodeId ? this.state.infoBoxNodeId : null
     })
   }
 
@@ -1132,6 +1154,7 @@ class MkGraphView extends Stateful {
 
     this.filterers.forEach(filterer=>{
       filterer.render();
+      console.log('filterer', filterer, filterer.getSelectionFilters())
       activeFilters = Object.assign(filterer.getSelectionFilters(), activeFilters)
     })
 
@@ -1476,7 +1499,7 @@ class MkTreeView extends MkGraphView {
     super(props, parentElement);
     this.state = Object.assign(this.state, {
       childString: props.childString || 'children',
-      root: props.root || this.state.graph.getRoot()
+      rootId: props.rootId || this.state.graph.getRoot().getId()
     });
 
     this.render = this.render.bind(this);
@@ -1484,19 +1507,19 @@ class MkTreeView extends MkGraphView {
 
   getQueryState() {
     return Object.assign(super.getQueryState(), {
-        rootId: this.state.root.getId(),
+        rootId: this.state.rootId,
     })
   }
 
   getStateToUnhideNodes(nodesToUnhide) {
     return {
-      root: nodesToUnhide.reduce((acc, node)=>node.getMrca(acc), null)
+      rootId: nodesToUnhide.reduce((acc, node)=>node.getMrca(acc), null).getId()
     }
   }
 
   appendGraphData(info) {
     super.appendGraphData(info);
-    let root = this.state.root;
+    let root = this.getViewRoot();
     let descendents = root.getDescendents();
     descendents.unshift(root);
     info.addEntry('nodes visible in tree', descendents.length, descendents);
@@ -1509,7 +1532,7 @@ class MkTreeView extends MkGraphView {
   }
 
   shouldRedraw(stateChanged) {
-    const GRAPH_AFFECTING_STATE = ["root", "childString"];
+    const GRAPH_AFFECTING_STATE = ["rootId", "childString"];
     return super.shouldRedraw(stateChanged) || stateChanged.some(key=>GRAPH_AFFECTING_STATE.includes(key));
   }
 
@@ -1535,7 +1558,7 @@ class MkTreeView extends MkGraphView {
     let nodeWidth = ch.width;
     let nodeHeight = ch.height;
 
-    let root = this.state.root;
+    let root = this.getViewRoot();
 
     let f;
     if (true) { //linear
@@ -1655,12 +1678,17 @@ class MkTreeView extends MkGraphView {
   dblclick(node, prefix = null, suffix = null) {
     d3.event.stopPropagation();
     this.setState({
-      root: node
+      rootId: node.getId()
     })
   }
 
+  getViewRoot() {
+    return this.getGraph().getNode(this.state.rootId);
+  }
+
   isVisibleInGraphState(node) {
-    return node.getAncestors(true).includes(this.state.root) || this.state.root.getAncestors().includes(node)
+    let root = this.getViewRoot();
+    return node.getAncestors(true).includes(root) || root.getAncestors().includes(node)
   }
 
   getNodePositions() {
@@ -1672,7 +1700,7 @@ class MkTreeView extends MkGraphView {
     let rootPosition = 'left';
 
     let dimensions = this.getDimensions();
-    let root = this.state.root;
+    let root = this.getViewRoot();
     let ancestors = root.getAncestors();
 
     let maxLabelTextLines = 4; //TODO get this from view state
@@ -1914,7 +1942,7 @@ InfoBox.of = function(node, mainKey = null, dataKeySelectFunc = (keys=>keys), li
   infoBox.addEntry(mainKeyLabel, title, node);
 
   //ancestor data
-  if (node.constructor === 'MkTreeNode') {
+  if (node.constructor.name === 'MkTreeNode') {
     if (!node.isRoot()) {
       let parent = node.getParent();
       let indent = ""
