@@ -19,6 +19,23 @@ body {
   background-color: #FFFFFF55;
 }
 
+.loading_spinner {
+  vertical-align: top;
+  display: inline-block;
+  margin-right: 0.5em;
+  border: 0.25em solid #f3f3f3;
+  border-top: 0.25em solid #666;
+  border-radius: 50%;
+  width: 0.5em;
+  height: 0.5em;
+  animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 .loading_small {
   display: inline-block;
   position: absolute;
