@@ -67,6 +67,9 @@ svg {
   background-color: #f5f5f5;
   padding: 0.5em;
 }
+.legend_title {
+  font-size: 1.2em;
+}
 .legend_entry {
   display: inline-block;
   padding: 3px 3px;
@@ -197,6 +200,7 @@ svg {
 /********************* TOOLTIP ********************/
 #tooltip {
   position: absolute;
+  z-index: 100;
   display: none;
   padding: 10px 15px;
   font-size: 0.8em;
