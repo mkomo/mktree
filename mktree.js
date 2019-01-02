@@ -713,9 +713,12 @@ class MkGraphSearch {
           ? props.attributeFilterSets[attr].values
           : this.graphView.getGraph().uniqueAttributeValues(attr)
         let sort = !('sort' in props.attributeFilterSets[attr]) || props.attributeFilterSets[attr].sort;
+        let filters = 'filters' in props.attributeFilterSets[attr]
+          ? props.attributeFilterSets[attr].filters
+          : MkGraphView.filtersByAttributeValue(attr, values, sort)
         new MkGraphLegend({
           title: attr,
-          filters: MkGraphView.filtersByAttributeValue(attr, values, sort),
+          filters: filters,
           graphView: this.graphView,
           filtersOn: props.filtersOn,
         }, filterContainer.node());
