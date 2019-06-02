@@ -952,7 +952,7 @@ class MkGraphView extends Stateful {
       title: props.title || 'Graph',
       colorFunction: props.colorFunction,
       label: props.label || function(d) {
-        return d.node.getId();
+        return d.getId();
       },
       tooltip: props.tooltip || function(node) {
         return node.getId();
@@ -1009,10 +1009,10 @@ class MkGraphView extends Stateful {
           filtersOn: props.filtersOn,
           graphView: this
         }, legendContainer.node());
+        //TODO handle legend for arbitrary color function
+      } else {
+        this.state.colorFunction = (d) => '#ccc'
       }
-      //TODO handle legend for arbitrary color function
-    } else {
-      this.state.colorFunction = (d) => '#ccc'
     }
 
     //tooltip
