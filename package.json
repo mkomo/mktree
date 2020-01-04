@@ -1,0 +1,27 @@
+{
+  "name": "@mkomo/mktree",
+  "version": "1.1.0",
+  "description": "A tool for efficiently visualizing tree graphs with thousands of nodes",
+  "main": "mktree.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mkomo/mktree.git"
+  },
+  "keywords": [
+    "graph",
+    "theory",
+    "d3js"
+  ],
+  "author": "Matthew Komorowski",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/mkomo/mktree/issues"
+  },
+  "homepage": "https://github.com/mkomo/mktree#readme",
+  "dependencies": {
+    "d3": "^5.7.0"
+  }
+}
