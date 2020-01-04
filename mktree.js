@@ -2149,4 +2149,4 @@ MkTree.generateRandomTree = function(size, //total number of nodes in trees
   return tree;
 }
 
-debug('loaded script');
+exports.MkTree = MkTree;
