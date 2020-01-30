@@ -952,6 +952,11 @@ class MkGraphSearch {
 class MkGraphView extends Stateful {
   constructor(props, parentElement = document.body) {
     super(props);
+
+    if (props.infoBoxNodeId && !props.graph.getNode(props.infoBoxNodeId)) {
+      console.error('failed to find infoBoxNodeId:', props.infoBoxNodeId);
+      props.infoBoxNodeId = null;
+    }
     this.state = {
       graph: props.graph,
       title: props.title || 'Graph',
@@ -1628,9 +1633,15 @@ class MkTreeView extends MkGraphView {
 
   constructor(props, parentElement = document.body) {
     super(props, parentElement);
+    if (!props.rootId) {
+      props.rootId = this.state.graph.getRoot().getId();
+    } else if (!this.state.graph.getNode(props.rootId)) {
+      console.error('failed to find rootId:', props.rootId);
+      props.rootId = this.state.graph.getRoot().getId();
+    }
     this.state = Object.assign(this.state, {
       childString: props.childString || 'children',
-      rootId: props.rootId || this.state.graph.getRoot().getId()
+      rootId: props.rootId
     });
 
     this.render = this.render.bind(this);
