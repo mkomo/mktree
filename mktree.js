@@ -977,7 +977,7 @@ class MkGraphView extends Stateful {
         return node.getId();
       },
       infoBox: props.infoBox || function(node) {
-        return InfoBox.of(node);
+        return InfoBox.of(node, props);
       },
       search: props.search || null,
       searchResultNodes: props.searchResultNodes || [],
@@ -2072,7 +2072,15 @@ class InfoBox {
   }
 }
 
-InfoBox.of = function(node, mainKey = null, dataKeySelectFunc = (keys=>keys), limitedKeys = null, dataCleanFunc = ((val, key)=>val), parentKey = 'parent', childKey = 'children', descendentKey = 'descendents') {
+InfoBox.of = function(node, {
+      mainKey = null,
+      dataKeySelectFunc = (keys=>keys),
+      limitedKeys = null,
+      dataCleanFunc = ((val, key)=>val),
+      parentKey = 'parent',
+      childKey = 'children',
+      descendentKey = 'descendents'
+    }) {
   let title = (mainKey === null) ? node.getId() : node.getAttribute(mainKey).trim();
   let mainKeyLabel = (mainKey === null) ? 'id' : mainKey;
   let infoBox = new InfoBox({
