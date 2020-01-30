@@ -793,16 +793,22 @@ class MkGraphSearch {
       debug('search starting', criteria, criteria.filter(c=>c.length === 1).map(c=>c[0]));
 
       let searchFields = this.state.searchFields;
+      if (typeof searchFields === 'function') {
+        //do nothing -- we will assume that this function returns true iff the given key should be included in search
+      } else if (Array.isArray(searchFields)) {
+        searchFields = (key)=>(searchFields.includes(key))
+      }
+
       Object.values(view.getGraph().getNodes()).forEach(function(node){
         // search
-        if (criteria.filter(c=>c.length === 1).map(c=>c[0]).includes(node.getId().toLowerCase())) {
+        if (criteria.filter(c=>c.length === 1).map(c=>c[0]).includes(("" + node.getId()).toLowerCase())) {
           nodes.push(node);
           return;
         }
         let attrs = node.getAttributes();
         for (let key in attrs) {
-          if ((searchFields == null || searchFields.includes(key))
-              && criteria.some(criterion=>criterion.every(term => attrs[key].toLowerCase().includes(term)))) {
+          if ((searchFields == null || searchFields(key))
+              && criteria.some(criterion=>criterion.every(term => ("" + attrs[key]).toLowerCase().includes(term)))) {
             nodes.push(node);
             return;
           }
@@ -885,7 +891,10 @@ class MkGraphSearch {
         let ib = view.state.infoBox(node);
         let key = (i < searchResultNodesVisible.length) ? i+1 : ('x ' + (i - searchResultNodesVisible.length + 1));
         searchInfo.addEntry(key + ':', ib.state.title, node);
-        searchInfo.addEntry(key + '.', Object.keys(ib.state.entries).filter(k=>(ib.state.limitedKeys === null || ib.state.limitedKeys.includes(k))).map(k=>ib.state.entries[k]).join('; '));
+        const info = (ib.state.limitedKeys)
+          ? ib.state.limitedKeys.map(key=>ib.state.entries[key])
+          : Object.values(ib.state.entries);
+        searchInfo.addEntry(key + '.', info.join('; '));
       });
     } else if (view.state.search !== null) {
       searchInfo = new InfoBox({
