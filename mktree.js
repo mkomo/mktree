@@ -1528,7 +1528,9 @@ class MkGraphView extends Stateful {
         let labelLength = Math.max(Math.floor(d.height / lineHeight), 1);
         let labelWidth = d.width / d.labelSize;
         let label = labelFunc(d.node, labelLength, labelWidth);
-        label = Array.isArray(label) ? label : [label, ''];
+        label = Array.isArray(label)
+          ? label.map((s,i)=>(i >= labelLength ? '' : s))
+          : [label, '', ''];
         var tspans = textNode.selectAll("tspan")
             .data(label);
         let trunc = (s, width) => (width === null || !s ? s : (s.length <= width * LABEL_TEXT_WIDTH_FACTOR ? s : s.substr(0, width * LABEL_TEXT_WIDTH_FACTOR - 2) + '...'));
@@ -1590,14 +1592,27 @@ class MkGraphView extends Stateful {
 
 //static function providing color
 MkGraphView.contrastColor = function(color) {
-  let c = d3.color(color);
-  return (c.opacity * (c.r + c.g + c.b)/3 > 128) ? '#000' : '#EEE';
+  const d = d3.color(color);
+  const c = {
+    r: Math.pow(d.r * d.opacity/256, 2.2),
+    g: Math.pow(d.g * d.opacity/256, 2.2),
+    b: Math.pow(d.b * d.opacity/256, 2.2)
+  }
+
+  // luminance Y = 0.2126 R + 0.7152 G + 0.0722 B
+  const y = (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b);
+  // saturation S = (max(R, G, B) - min(R, G, B)) / max(R, G, B)
+  const s  = (Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b)) / Math.max(c.r, c.g, c.b);
+
+  return  (y > 0.5) ? '#111' :'#eee';
+
+  // return (c.opacity * (c.r + c.g + c.b)/3 > 128) ? '#000' : '#EEE';
 }
 MkGraphView.colorNodeByAttribute = function(colorAttribute, colorByAttributeValue, defaultColor = '#000') {
   let cf = function(d) {
     let attributes = d.node.getAttributes();
-    if (colorAttribute in attributes && attributes[colorAttribute].toLowerCase() in colorByAttributeValue) {
-      return colorByAttributeValue[attributes[colorAttribute].toLowerCase()];
+    if (colorAttribute in attributes && ("" + attributes[colorAttribute]).toLowerCase() in colorByAttributeValue) {
+      return colorByAttributeValue[("" + attributes[colorAttribute].toLowerCase())];
     } else {
       return defaultColor;
     }
@@ -2008,7 +2023,7 @@ class MkTreeView extends MkGraphView {
       c[level].offset = offset;
       offset += c[level].width + LEVEL_SPACE_MIN + extraSpaceBefore(parseInt(level) + 1);
     }
-    debug('characteristic', c)
+    console.log('characteristic', c)
     return c;
   }
 
@@ -2176,4 +2191,6 @@ MkTree.generateRandomTree = function(size, //total number of nodes in trees
   return tree;
 }
 
-exports.MkTree = MkTree;
+if (typeof exports !== 'undefined') {
+  exports.MkTree = MkTree;
+}
