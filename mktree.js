@@ -25,6 +25,11 @@ CliqueView: nodeIds, ...
 EditableGraphView: nodeViews,
 */
 
+const UNSELECTED_EDGE_OPACITY = 0.25;
+const SELECTED_EDGE_OPACITY = 0.5;
+const WIDTH_FACTOR = 3; //TODO change this if we want square nodes for certain root positions;
+const LABEL_TEXT_WIDTH_FACTOR = 1.9;
+
 //The innards of a node should be immutable in order to maintain some sense of sanity
 class MkNode {
   constructor(props) {
@@ -1142,7 +1147,6 @@ class MkGraphView extends Stateful {
     return {};//TODO
   }
 
-  //TODO clean this up -- obviously just a test
   getElementViews() {
     let edgeViews = [];
     let nodeViews = [];
@@ -1323,11 +1327,11 @@ class MkGraphView extends Stateful {
       .style('opacity',0)
       .transition(t)
           .delay(500)
-        .style('opacity', d => (d[0].node.isIncludedSelf() && d[1].node.isIncludedSelf()) ? 0.5 : 0.1)
+        .style('opacity', d => (d[0].node.isIncludedSelf() && d[1].node.isIncludedSelf()) ? SELECTED_EDGE_OPACITY : UNSELECTED_EDGE_OPACITY)
           .selection()
     .merge(d3edges)
       .transition(t)
-        .style('opacity', d => (d[0].node.isIncludedSelf() && d[1].node.isIncludedSelf()) ? 0.5 : 0.1)
+        .style('opacity', d => (d[0].node.isIncludedSelf() && d[1].node.isIncludedSelf()) ? SELECTED_EDGE_OPACITY : UNSELECTED_EDGE_OPACITY)
         .attr("d", function(a) {
           return line(a);
         });
@@ -1354,7 +1358,7 @@ class MkGraphView extends Stateful {
       .on('dblclick', d => this.dblclick(d[0].node))
       .transition(t)
           .delay(500)
-        .style('opacity', d => d[0].node.isIncludedSelf() ? 0.5 : 0.1)
+        .style('opacity', d => d[0].node.isIncludedSelf() ? SELECTED_EDGE_OPACITY : UNSELECTED_EDGE_OPACITY)
           .selection()
     .merge(d3groupEdges)
       .transition(t)
@@ -1366,7 +1370,7 @@ class MkGraphView extends Stateful {
           node = d[1].span; let c = [node.x - node.edgeOffsetX, node.y - node.edgeOffsetY];
           return [a, b, c].map(coord => coord.join(',')).join(' ')
         })
-        .style('opacity', d => d[1].spanNodes.some(e=>e.node.isIncludedSelf()) ? 0.5 : 0.1);
+        .style('opacity', d => d[1].spanNodes.some(e=>e.node.isIncludedSelf()) ? SELECTED_EDGE_OPACITY : UNSELECTED_EDGE_OPACITY);
 
     //TODO don't remove till after transition?
 
@@ -1513,7 +1517,6 @@ class MkGraphView extends Stateful {
         label = Array.isArray(label) ? label : [label, ''];
         var tspans = textNode.selectAll("tspan")
             .data(label);
-        const LABEL_TEXT_WIDTH_FACTOR = 1.9;
         let trunc = (s, width) => (width === null || !s ? s : (s.length <= width * LABEL_TEXT_WIDTH_FACTOR ? s : s.substr(0, width * LABEL_TEXT_WIDTH_FACTOR - 2) + '...'));
         tspans.exit().remove();
         tspans.enter().append('tspan')
@@ -1666,8 +1669,7 @@ class MkTreeView extends MkGraphView {
 
   levelPath(ch, dimensions, margins, levelNodes, nodes, rootPosition) {
     //setup
-    let w = dimensions.graphWidth - margins.l - margins.r;
-    let h = dimensions.graphHeight - margins.t - margins.b;
+    let innerHeight = dimensions.graphHeight - margins.t - margins.b;
 
     //linear
 
@@ -1678,8 +1680,8 @@ class MkTreeView extends MkGraphView {
     } else if (rootPosition === 'left') {
       xLineStart = ch.offset;
       xLineChange = 0;
-      yLineStart = h;
-      yLineChange = -1 * h;
+      yLineStart = innerHeight;
+      yLineChange = -1 * innerHeight;
     } else {
     }
 
@@ -1887,9 +1889,10 @@ class MkTreeView extends MkGraphView {
 
     let last = nodes[root.getId()];
 
+    //Ancestor node creation
     nodes = Object.values(nodes);
     let nodeHeight = ancestorRadius * 2;
-    let nodeWidth = ancestorRadius * 4;
+    let nodeWidth = nodeHeight * WIDTH_FACTOR;
     ancestors.forEach((node, i) => {
       let n = new NodeView({
         node: node,
@@ -1921,16 +1924,12 @@ class MkTreeView extends MkGraphView {
       return getCharacteristicTop();
     }
 
-    let widthFactor = 2; //TODO change this if we want square nodes for certain root positions;
-    let maxNodeHeight = maxLabelTextLines * LABEL_SIZE_DEFAULT * LINE_HEIGHT_FACTOR;
-    let maxNodeWidth = widthFactor * maxNodeHeight;
-
     //setup
-    let w = dimensions.graphWidth - margins.l - margins.r;
-    let h = dimensions.graphHeight - margins.t - margins.b;
+    let innerWidth = dimensions.graphWidth - margins.l - margins.r;
+    let innerHeight = dimensions.graphHeight - margins.t - margins.b;
 
-    let lineLength = h; // pixes for line dimension
-    let levelSpace = w; // pixels for levels dimension
+    let lineLength = innerHeight; // pixes for line dimension
+    let levelSpace = innerWidth; // pixels for levels dimension
 
     const NODE_SPACE_FACTOR = 1.2; // we want at least 30% space between nodes if we can get it.
     const LEVEL_SPACE_MIN = 20;
@@ -1954,7 +1953,7 @@ class MkTreeView extends MkGraphView {
 
     let extraLevelSpace = (levels, levelSpace) => {
       let minSpaceBetweenLevels = (levels.length - 1) * LEVEL_SPACE_MIN;
-      let totalWidthOfLevels = Object.values(c).map(ch => ch.linesPerNode).reduce((acc, l) => (acc + l * widthFactor * LABEL_SIZE_DEFAULT * LINE_HEIGHT_FACTOR), 0)
+      let totalWidthOfLevels = Object.values(c).map(ch => ch.linesPerNode).reduce((acc, l) => (acc + l * WIDTH_FACTOR * LABEL_SIZE_DEFAULT * LINE_HEIGHT_FACTOR), 0)
       return levelSpace - totalWidthOfLevels - minSpaceBetweenLevels;
     }
 
@@ -1982,7 +1981,7 @@ class MkTreeView extends MkGraphView {
     let offset = 0;
     for (let level in c) {
       c[level].height = (c[level].linesPerNode * LINE_HEIGHT_FACTOR) * LABEL_SIZE_DEFAULT;
-      c[level].width = c[level].height * widthFactor;
+      c[level].width = c[level].height * WIDTH_FACTOR;
       c[level].extraSpace = lineLength - c[level].height * c[level].levelLength * NODE_SPACE_FACTOR;
       c[level].nodeDeltaFrac = c[level].height * NODE_SPACE_FACTOR / lineLength;
       c[level].lineLength = lineLength;
