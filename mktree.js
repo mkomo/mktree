@@ -29,6 +29,7 @@ const UNSELECTED_EDGE_OPACITY = 0.25;
 const SELECTED_EDGE_OPACITY = 0.5;
 const WIDTH_FACTOR = 3; //TODO change this if we want square nodes for certain root positions;
 const LABEL_TEXT_WIDTH_FACTOR = 1.9;
+const imgAspectRatio = 1; //desired width/height
 
 //The innards of a node should be immutable in order to maintain some sense of sanity
 class MkNode {
@@ -37,6 +38,7 @@ class MkNode {
     this.state.id = props.id;
     this.state.graph = props.graph;
     this.state.attributes = props.attributes || {};
+    this.state.image = props.image || null;
 
     this.state.graph.addNode(this);
   }
@@ -53,6 +55,10 @@ class MkNode {
   //about this node
   getId(){
     return this.state.id;
+  }
+
+  getImage(){
+    return this.state.image;
   }
 
   getAttributes(){
@@ -1076,7 +1082,7 @@ class MkGraphView extends Stateful {
         } else {
           return [[row, labelClass], [info.getEntries()[row]]]
         }
-      })
+      });
     d3entries
       .enter()
           .append('td')
@@ -1185,6 +1191,7 @@ class MkGraphView extends Stateful {
       if (y < dimensions.graphHeight - margins.t) {
         let n = new NodeView({
           node: node,
+          image: true,
           label: true,
           labelSize: LABEL_SIZE_DEFAULT,
           height: height,
@@ -1519,7 +1526,7 @@ class MkGraphView extends Stateful {
         let textNode = d3.select(this);
         let lineHeight = d.labelSize * LINE_HEIGHT_FACTOR;
         let labelLength = Math.max(Math.floor(d.height / lineHeight), 1);
-        let labelWidth = d.width / d.labelSize;
+        let labelWidth = (d.image ? d.width - d.height * imgAspectRatio : d.width) / d.labelSize;
         let label = labelFunc(d.node, labelLength, labelWidth);
         label = Array.isArray(label)
           ? label.map((s,i)=>(i >= labelLength ? '' : s))
@@ -1537,7 +1544,7 @@ class MkGraphView extends Stateful {
           .attr("text-anchor", "middle")
           .attr("alignment-baseline", "middle")
           .transition(t)
-            .attr('x', d.x);
+            .attr('x', d.image ? d.x + d.height * imgAspectRatio/2 : d.x);
       })
       .style('font-size', d => d.labelSize)
       .style('fill', d=> {
@@ -1556,16 +1563,79 @@ class MkGraphView extends Stateful {
         .attr('x', function(d){
           return d.image ? d.x : d.x;
         })
-        .attr("y", function(d){
-          if (d.width > MIN_RADIUS_CENTER_TEXT) {
-            return d.y;
-          }
-          return d.y - d.height/2;
+        .attr('y', function(d){
+          return d.y;
         })
       .selection().raise();
 
+
+
+
+
+
+
+
+    //images
+    let d3nodeimgs = this.container.selectAll("image")
+    .data(nodes.filter(d => {
+      return (d.isHidden !== false) && !('span' in d) && d.image;//TODO add property for image
+    }), d => d.node.getId());
+
+    d3nodeimgs.exit().remove();
+
+    d3nodeimgs.enter().append("image")
+      .attr("class", 'nodeimage')
+      .attr('xlink:href', d => {
+        const jpegdata = d.node.getImage();
+        //TODO show placeholder
+        return jpegdata;
+      })
+      .classed('clickable', true)
+      .on('mouseover', d => this.hover(d.node))
+      .on('click', d => this.click(d.node))
+      .on('dblclick', d => this.dblclick(d.node))
+      .attr('x', function(d){
+        return d.x - d.width/2;
+      })
+      .attr('y', function(d){
+        return d.y - d.height/2;
+      })
+      .attr("width", function(d){
+        return d.height * imgAspectRatio;
+      })
+      .attr("height", function(d){
+        return d.height;
+      })
+      .style('opacity',0)
+      .transition(t)
+          .delay(500)
+        .style('opacity', d => d.node.isIncludedSelf() ? 1 : 0.8)
+          .selection()
+    .merge(d3nodeimgs)
+      .transition(t)
+        .style('opacity', d => d.node.isIncludedSelf() ? 1 : 0.8)
+        .attr('x', function(d){
+          return d.x - d.width/2;
+        })
+        .attr('y', function(d){
+          return d.y - d.height/2;
+        })
+        .attr("width", function(d){
+          return d.height * imgAspectRatio;
+        })
+        .attr("height", function(d){
+          return d.height;
+        })
+      .selection().raise();
+
+
+
+
+
+
+
     // sort overlapping focus nodes so that label is with rect
-    this.container.selectAll('text,.node')
+    this.container.selectAll('text,image,.node')
       .filter(d=> this.nodeIsFocused(d.node))
       .raise()
       .sort((a,b)=>{
@@ -1792,7 +1862,8 @@ class MkTreeView extends MkGraphView {
     }
 
 
-    let shouldLabel = nodeHeight >= MIN_NODE_HEIGHT_FOR_LABEL;
+    let shouldShowLabel = nodeHeight >= MIN_NODE_HEIGHT_FOR_LABEL;
+    let shouldShowImage = nodeHeight >= 2 * MIN_NODE_HEIGHT_FOR_LABEL;
 
     //TODO optimize view for sparce view: height based on density;
     //search: Gadiyaram, Hariprasad [contractor] <hgadiyaram_contractor@mtb.com>; Selvaraj, Eujish [contractor] <eselvaraj_contractor@mtb.com>; Mangla, Shashank [contractor] <smangla_contractor@mtb.com>; Black, Brian <bblack@mtb.com>; Sharma, Anoop  [contractor] <asharma10_contractor@mtb.com>; Tomar, Vivek [contractor] <vtomar_contractor@mtb.com>; Foremiak, Lynn <lforemiak@mtb.com>; Aguilera, Ivan <iaguilera@mtb.com>; Narayana, Lakshmi [contractor] <lnarayana_contractor@mtb.com>; Manjunatha, Sandeep [contractor] <smanjunatha_contractor@mtb.com>; Duvvuru, Avinash  [contractor] <aduvvuru2_contractor@mtb.com>
@@ -1807,7 +1878,8 @@ class MkTreeView extends MkGraphView {
 
         return new NodeView({
           node: node,
-          label: shouldLabel,
+          label: shouldShowLabel,
+          image: shouldShowImage,
           labelSize: LABEL_SIZE_DEFAULT,
 
           pathFrac: pathFrac,//used for anchoring child node
@@ -1920,7 +1992,8 @@ class MkTreeView extends MkGraphView {
       let n = new NodeView({
         node: node,
         label: true,
-        labelSize: 10,
+        image: true,
+        labelSize: LABEL_SIZE_DEFAULT,
         width: nodeWidth,
         height: nodeHeight,
         edgeOffsetX: (rootPosition !== 'left') ? nodeWidth/2 : 0,
@@ -2031,6 +2104,7 @@ class NodeView {
     this.node = props.node;
     this.hasFocus = ()=>(props.hasFocus || (graphView && graphView.nodeIsFocused(this.node)));
     this.label = props.label || this.hasFocus();
+    this.image = props.image;
     this.labelSize = props.labelSize;
 
     this.pathFrac = props.pathFrac;
@@ -2094,6 +2168,10 @@ InfoBox.of = function(node, {
   });
 
   //top datum
+  if (node.getImage()) {
+    infoBox.addEntry('image', `<img src="${node.getImage()}" />`);
+  }
+
   infoBox.addEntry(mainKeyLabel, title, node);
 
   //ancestor data
