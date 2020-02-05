@@ -675,6 +675,20 @@ class MkGraphInfo {
   }
 }
 
+
+function searchCriteria(criteriaString) {
+  //TODO find quotes so that it's easy to search for first or last names. Also score search based on closeness
+  //get separate terms in lowercase
+  let criteria = criteriaString.toLowerCase().split(';');
+  //trim criteria; filter empties
+  criteria = criteria.map(t=>t.trim()).filter(t=>t !== '');
+  //email special case TODO move this out into some settable search functions
+  criteria = criteria.map(e=>(e.includes('<') ? e.split('<')[1].split('>')[0]: e))
+  //split into bundled terms
+  criteria = criteria.map(e=>e.split(/[\s]+/));
+  return criteria;
+}
+
 class MkGraphSearch {
   constructor(props, graphView, parentElement = document.body) {
     this.graphView = graphView;
@@ -777,24 +791,11 @@ class MkGraphSearch {
 
   }
 
-  searchCriteria(criteriaString) {
-    //TODO find quotes so that it's easy to search for first or last names. Also score search based on closeness
-    //get separate terms in lowercase
-    let criteria = criteriaString.toLowerCase().split(';');
-    //trim criteria; filter empties
-    criteria = criteria.map(t=>t.trim()).filter(t=>t !== '');
-    //email special case TODO move this out into some settable search functions
-    criteria = criteria.map(e=>(e.includes('<') ? e.split('<')[1].split('>')[0]: e))
-    //split into bundled terms
-    criteria = criteria.map(e=>e.split(/[\s]+/));
-    return criteria;
-  }
-
   search(criteriaString) {
     let view = this.graphView;
     let nodes = [];
     if (criteriaString.trim().length !== 0) {
-      let criteria = this.searchCriteria(criteriaString)
+      let criteria = searchCriteria(criteriaString)
       debug('search starting', criteria, criteria.filter(c=>c.length === 1).map(c=>c[0]));
 
       let searchFields = this.state.searchFields;
