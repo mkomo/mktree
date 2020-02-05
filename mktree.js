@@ -407,7 +407,6 @@ class MkTree extends MkGraph {
   }
 }
 
-const MIN_RADIUS_CENTER_TEXT = 0;
 const MIN_RADIUS_LABEL = 5;
 const LINE_HEIGHT_FACTOR = 1.2; //line spacing
 const LABEL_SIZE_FACTOR = 2;
@@ -1187,7 +1186,7 @@ class MkGraphView extends Stateful {
         let n = new NodeView({
           node: node,
           label: true,
-          labelSize: 10,
+          labelSize: LABEL_SIZE_DEFAULT,
           height: height,
           width: width,
           x: x,
@@ -1446,10 +1445,10 @@ class MkGraphView extends Stateful {
     d3nodes
       .classed('focus', d=>d.hasFocus())
       .transition(t)
-          .attr("x", function(d) {
+          .attr('x', function(d) {
             return d.x - d.width/2 - (d.hasFocus() ? 1 : 0);
           })
-          .attr("y", function(d) {
+          .attr('y', function(d) {
             return d.y - d.height/2 - (d.hasFocus() ? 1 : 0);
           })
           .attr("width", function(d){
@@ -1470,10 +1469,10 @@ class MkGraphView extends Stateful {
       .on('click', d => this.click(d.node))
       .on('dblclick', d => this.dblclick(d.node))
       .attr('id', d => d.node.getId())
-      .attr("x", function(d) {
+      .attr('x', function(d) {
         return d.x - d.width/2 - (d.hasFocus() ? 1 : 0);
       })
-      .attr("y", function(d) {
+      .attr('y', function(d) {
         return d.y - d.height/2 - (d.hasFocus() ? 1 : 0);
       })
       .attr("width", function(d){
@@ -1504,17 +1503,11 @@ class MkGraphView extends Stateful {
       .on('mouseover', d => this.hover(d.node))
       .on('click', d => this.click(d.node))
       .on('dblclick', d => this.dblclick(d.node))
-      .attr("x", function(d){
-        if (d.width > MIN_RADIUS_CENTER_TEXT) {
-          return d.x;
-        }
-        return d.x + d.width;
+      .attr('x', function(d){
+        return d.image ? d.x + d.height * imgAspectRatio : d.x;
       })
-      .attr("y", function(d){
-        if (d.width > MIN_RADIUS_CENTER_TEXT) {
-          return d.y;
-        }
-        return d.y - d.height;
+      .attr('y', function(d){
+        return d.y;
       })
       .style('opacity',0)
       .transition(t)
@@ -1536,21 +1529,19 @@ class MkGraphView extends Stateful {
         let trunc = (s, width) => (width === null || !s ? s : (s.length <= width * LABEL_TEXT_WIDTH_FACTOR ? s : s.substr(0, width * LABEL_TEXT_WIDTH_FACTOR - 2) + '...'));
         tspans.exit().remove();
         tspans.enter().append('tspan')
-          //.attr('dx', 0)
-          //.attr('x', d.x)
         .merge(tspans)
           .text(line=>trunc(line, labelWidth))
           .attr('dy', (line,i)=>{
             return i == 0 ? (1 - label.filter(l=>l && l.length > 0).length) * 0.5 * lineHeight : lineHeight;
           })
-          .attr("text-anchor", d.width > MIN_RADIUS_CENTER_TEXT ? "middle" : "start")
+          .attr("text-anchor", "middle")
           .attr("alignment-baseline", "middle")
           .transition(t)
             .attr('x', d.x);
       })
       .style('font-size', d => d.labelSize)
       .style('fill', d=> {
-        if (d.width >= MIN_RADIUS_CENTER_TEXT && (d.node.isIncludedSelf() || d.hasFocus())) {
+        if (d.node.isIncludedSelf() || d.hasFocus()) {
           if (typeof this.state.colorFunction.textColor === 'function') {
             return this.state.colorFunction.textColor(d);
           } else {
@@ -1562,11 +1553,8 @@ class MkGraphView extends Stateful {
       })
       .transition(t)
         .style('opacity', d => d.node.isIncludedSelf() ? 1 : 0.8)
-        .attr("x", function(d){
-          if (d.width > MIN_RADIUS_CENTER_TEXT) {
-            return d.x;
-          }
-          return d.x + d.width/2;
+        .attr('x', function(d){
+          return d.image ? d.x : d.x;
         })
         .attr("y", function(d){
           if (d.width > MIN_RADIUS_CENTER_TEXT) {
