@@ -634,6 +634,7 @@ class MkGraphLegend extends Stateful {
 class MkGraphInfo {
   constructor(props, graphView, parentElement) {
     this.graphView = graphView;
+    this.parentElement = parentElement;
     this.container = parentElement.append('div');
     this.infoTable = this.container.append('table').attr('class', 'info_element');
     this.shouldHide = false;
@@ -663,6 +664,7 @@ class MkGraphInfo {
         view.appendGraphData(info);
       }
 
+      this.parentElement.node().scrollTop = 0;
       view.populateTable(this.infoTable, info);
 
       if (shouldShowExit) {
@@ -1067,7 +1069,8 @@ class MkGraphView extends Stateful {
   }
 
   populateTable(table, info, labelClass = 'label') {
-    let d3entries = table.selectAll("tr").data(Object.keys(info.getEntries()));
+    const entries = info.getEntries();
+    let d3entries = table.selectAll("tr").data(Object.keys(entries));
 
     d3entries.exit().remove();
 
@@ -1079,9 +1082,9 @@ class MkGraphView extends Stateful {
       .data((row) => {
         let link = info.state.links[row];
         if (link) {
-          return [[row, labelClass], [info.getEntries()[row], 'link', link]]
+          return [[row, labelClass], [entries[row], 'link', link]]
         } else {
-          return [[row, labelClass], [info.getEntries()[row]]]
+          return [[row, labelClass], [entries[row]]]
         }
       });
     d3entries
@@ -1102,6 +1105,8 @@ class MkGraphView extends Stateful {
                 });
               } else if (typeof link == 'function') {
                 link.call(this);
+              } else if (typeof link == 'string') {
+                window.open(link);
               } else {
                 //link is a node
                 this.click(link);
@@ -1323,6 +1328,7 @@ class MkGraphView extends Stateful {
       };
     var line = d3.line()
       .x((d,index)=>{
+        //TODO figure out a better way to do this so the root nodes parent is above
         return d.x + (index == 0 ? 1 : -1) * d.edgeOffsetX;
       })
       .y((d, index)=>(d.y + (index == 0 ? 1 : -1) * d.edgeOffsetY));
@@ -2159,13 +2165,14 @@ InfoBox.of = function(node, {
       dataCleanFunc = ((val, key)=>val),
       parentKey = 'parent',
       childKey = 'children',
-      descendentKey = 'descendents'
+      descendentKey = 'descendents',
+      links = null
     }) {
   let title = (mainKey === null) ? node.getId() : node.getAttribute(mainKey).trim();
   let mainKeyLabel = (mainKey === null) ? 'id' : mainKey;
   let infoBox = new InfoBox({
     title: title,
-    limitedKeys: limitedKeys,
+    limitedKeys: limitedKeys
   });
 
   //top datum
@@ -2201,7 +2208,11 @@ InfoBox.of = function(node, {
   otherDataKeys.forEach(key=>{
     let val = dataCleanFunc(node.getAttribute(key), key);
     if (val != null) {
-      infoBox.addEntry(key, val);
+      if (Array.isArray(val)) {
+        infoBox.addEntry(key, ...val);
+      } else {
+        infoBox.addEntry(key, val);
+      }
     }
   })
 
